@@ -1,0 +1,16 @@
+{
+  "library": "dune-sim",
+  "version": "current",
+  "crawl_date": "2025-08-23",
+  "source_url": "https://docs.sim.dune.com/",
+  "total_pages": 42,
+  "credits_used": 42,
+  "capabilities": [
+    "Blockchain data APIs",
+    "Transaction simulation",
+    "Wallet balances and activity",
+    "Multi-chain support",
+    "Token holder analysis",
+    "Real-time indexing"
+  ]
+}

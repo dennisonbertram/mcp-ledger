@@ -27,6 +27,7 @@
     "@ledgerhq/hw-transport-node-hid": "^6.29.8",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "axios": "^1.7.9",
+    "dotenv": "^16.6.1",
     "node-cache": "^5.1.2",
     "viem": "^2.21.45",
     "ws": "^8.18.0",

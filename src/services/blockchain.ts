@@ -38,6 +38,7 @@ import {
   BlockchainError,
   BlockchainErrorCode,
 } from '../types/blockchain.js';
+import { getRpcUrls, getApiConfig, hasEnhancedFeatures } from '../config/environment.js';
 
 // ERC20 ABI for token operations
 const ERC20_ABI = [
@@ -117,9 +118,20 @@ export class BlockchainService {
   private networkConfigs: Record<SupportedNetwork, typeof mainnet | typeof sepolia | typeof polygon | typeof arbitrum | typeof optimism | typeof base>;
 
   constructor(config?: BlockchainServiceConfig) {
-    // Set default configuration
+    // Get RPC URLs with API key integration
+    const rpcUrls = getRpcUrls();
+    
+    // Set default configuration with API-enabled RPC endpoints
     this.config = {
-      networks: config?.networks || {},
+      networks: {
+        mainnet: { rpcUrl: rpcUrls.mainnet, chainId: 1, name: 'Ethereum Mainnet' },
+        sepolia: { rpcUrl: rpcUrls.sepolia, chainId: 11155111, name: 'Sepolia Testnet' },
+        polygon: { rpcUrl: rpcUrls.polygon, chainId: 137, name: 'Polygon' },
+        arbitrum: { rpcUrl: rpcUrls.arbitrum, chainId: 42161, name: 'Arbitrum One' },
+        optimism: { rpcUrl: rpcUrls.optimism, chainId: 10, name: 'Optimism' },
+        base: { rpcUrl: rpcUrls.base, chainId: 8453, name: 'Base' },
+        ...config?.networks,
+      },
       defaultNetwork: config?.defaultNetwork || 'mainnet',
       cacheEnabled: config?.cacheEnabled !== false,
       cacheTTL: config?.cacheTTL || 300, // 5 minutes default
@@ -136,6 +148,15 @@ export class BlockchainService {
       optimism,
       base,
     };
+    
+    // Log configuration status
+    const apiConfig = getApiConfig();
+    if (hasEnhancedFeatures()) {
+      console.log('✅ BlockchainService initialized with enhanced RPC providers');
+    } else {
+      console.log('⚠️  BlockchainService using public RPC endpoints (rate limited)');
+      console.log('   💡 Add ALCHEMY_API_KEY or INFURA_PROJECT_ID for enhanced performance');
+    }
   }
 
   /**
