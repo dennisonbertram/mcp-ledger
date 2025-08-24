@@ -25,6 +25,9 @@
   "exclude": [
     "node_modules",
     "dist",
-    "tests"
+    "tests",
+    "src/test/**/*",
+    "src/proxy/**/*", 
+    "src/vercel/**/*"
   ]
 }

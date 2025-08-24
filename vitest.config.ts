@@ -6,8 +6,8 @@ export default defineConfig({
     // Test environment configuration
     environment: 'node',
     
-    // Global setup and teardown
-    globalSetup: './src/test/setup/global.ts',
+    // Setup files instead of globalSetup
+    setupFiles: ['./src/test/setup/global.ts'],
     
     // Test file patterns
     include: [

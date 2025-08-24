@@ -8,25 +8,20 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    
     "test:unit": "vitest run src/test/unit",
     "test:integration": "vitest run src/test/integration",
-    "test:contracts": "vitest run src/test/contracts", 
+    "test:contracts": "vitest run src/test/contracts",
     "test:e2e": "vitest run src/test/e2e",
     "test:hardware": "NODE_ENV=hardware vitest run src/test/hardware",
-    
     "test:ci": "npm run test:unit && npm run test:integration && npm run test:contracts",
     "test:all": "npm run test:ci && npm run test:e2e",
     "test:smoke": "vitest run --testNamePattern=\"health|status|config\"",
-    
     "test:vercel": "cd src/vercel && npm test",
     "test:proxy": "cd src/proxy && npm test",
-    
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "typecheck": "tsc --noEmit",
@@ -57,17 +52,17 @@
     "@types/ledgerhq__hw-transport": "^4.21.8",
     "@types/ledgerhq__hw-transport-node-hid": "^4.22.5",
     "@types/node": "^22.10.2",
+    "@types/supertest": "^2.0.16",
     "@types/ws": "^8.5.13",
     "@typescript-eslint/eslint-plugin": "^8.18.2",
     "@typescript-eslint/parser": "^8.18.2",
+    "@vitest/coverage-v8": "^1.6.1",
+    "@vitest/ui": "^1.6.1",
     "eslint": "^9.17.0",
-    "supertest": "^6.3.3",
-    "@types/supertest": "^2.0.12",
+    "supertest": "^6.3.4",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^1.2.0",
-    "@vitest/ui": "^1.2.0",
-    "@vitest/coverage-v8": "^1.2.0"
+    "vitest": "^1.6.1"
   },
   "engines": {
     "node": ">=18.0.0"
