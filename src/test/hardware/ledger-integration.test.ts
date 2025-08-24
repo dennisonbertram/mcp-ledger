@@ -5,8 +5,11 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import TransportNodeHid from '@ledgerhq/hw-transport-node-hid';
-import Eth from '@ledgerhq/hw-app-eth';
+import TransportNodeHidModule from '@ledgerhq/hw-transport-node-hid';
+import EthModule from '@ledgerhq/hw-app-eth';
+
+const TransportNodeHid = TransportNodeHidModule.default;
+const Eth = EthModule.default;
 
 // Mark as hardware tests that require manual setup
 const REQUIRES_HARDWARE = process.env.NODE_ENV !== 'ci';

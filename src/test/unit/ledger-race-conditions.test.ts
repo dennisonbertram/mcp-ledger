@@ -4,8 +4,11 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { LedgerService } from '../../services/ledger.js';
-import TransportNodeHid from '@ledgerhq/hw-transport-node-hid';
-import Eth from '@ledgerhq/hw-app-eth';
+import TransportNodeHidModule from '@ledgerhq/hw-transport-node-hid';
+import EthModule from '@ledgerhq/hw-app-eth';
+
+const TransportNodeHid = TransportNodeHidModule.default;
+const Eth = EthModule.default;
 
 // Mock the Ledger dependencies
 vi.mock('@ledgerhq/hw-transport-node-hid');

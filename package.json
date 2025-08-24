@@ -32,9 +32,24 @@
     "ledger",
     "ethereum",
     "blockchain",
-    "typescript"
+    "typescript",
+    "hardware-wallet",
+    "ai-agent",
+    "model-context-protocol"
   ],
-  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crazyrabbitltc/mcp-ledger"
+  },
+  "homepage": "https://github.com/crazyrabbitltc/mcp-ledger",
+  "bugs": {
+    "url": "https://github.com/crazyrabbitltc/mcp-ledger/issues"
+  },
+  "author": {
+    "name": "Dennison Bertram",
+    "email": "dennison@dennisonbertram.com",
+    "url": "https://github.com/crazyrabbitltc"
+  },
   "license": "MIT",
   "dependencies": {
     "@ledgerhq/hw-app-eth": "^6.38.6",

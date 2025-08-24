@@ -6,8 +6,11 @@
 
 import express from 'express';
 import cors from 'cors';
-import TransportNodeHid from '@ledgerhq/hw-transport-node-hid';
-import Eth from '@ledgerhq/hw-app-eth';
+import TransportNodeHidModule from '@ledgerhq/hw-transport-node-hid';
+import EthModule from '@ledgerhq/hw-app-eth';
+
+const TransportNodeHid = (TransportNodeHidModule as any).default;
+const Eth = (EthModule as any).default;
 import { z } from 'zod';
 import { parseEther } from 'viem';
 // Import from main project structure
