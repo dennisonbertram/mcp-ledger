@@ -23,18 +23,28 @@ import {
   SendErc721TokenSchema,
   ManageTokenApprovalSchema,
   GasAnalysisSchema,
+  GetBitcoinAddressSchema,
+  GetBitcoinBalanceSchema,
+  CraftBitcoinTransactionSchema,
+  SendBitcoinSchema,
+  AnalyzeBitcoinFeesSchema,
 } from './types/index.js';
 import { ServiceOrchestrator } from './services/orchestrator.js';
 import { ToolHandlers } from './handlers/tools.js';
+import { BitcoinToolHandlers } from './handlers/bitcoin-tools.js';
+import { LedgerService } from './services/ledger.js';
+import { BitcoinBlockchainService } from './services/bitcoin-blockchain.js';
+import { BitcoinTransactionCrafter } from './services/bitcoin-transaction-crafter.js';
 
 // Server configuration
 const SERVER_NAME = 'mcp-ledger-server';
 const SERVER_VERSION = '1.0.0';
-const SERVER_DESCRIPTION = 'MCP server for Ledger hardware wallet integration with Ethereum blockchain';
+const SERVER_DESCRIPTION = 'MCP server for Ledger hardware wallet integration with Ethereum and Bitcoin blockchains';
 
-// Global orchestrator instance
+// Global service instances
 let orchestrator: ServiceOrchestrator;
 let toolHandlers: ToolHandlers;
+let bitcoinToolHandlers: BitcoinToolHandlers;
 
 /**
  * Initialize services and orchestrator
@@ -70,6 +80,21 @@ async function initializeServices(): Promise<void> {
 
   // Create tool handlers
   toolHandlers = new ToolHandlers(orchestrator);
+
+  // Initialize Bitcoin services  
+  const ledgerService = new LedgerService();
+  const bitcoinBlockchainService = new BitcoinBlockchainService();
+  const bitcoinTransactionCrafter = new BitcoinTransactionCrafter(
+    bitcoinBlockchainService,
+    ledgerService
+  );
+  
+  // Create Bitcoin tool handlers
+  bitcoinToolHandlers = new BitcoinToolHandlers(
+    ledgerService,
+    bitcoinBlockchainService,
+    bitcoinTransactionCrafter
+  );
 
   // Initialize services (this will attempt to connect to Ledger)
   try {
@@ -620,6 +645,187 @@ async function startServer() {
     }
   );
 
+  // BITCOIN TOOLS
+
+  // Register tool: get_bitcoin_address
+  server.tool(
+    'get_bitcoin_address',
+    'Get Bitcoin address from Ledger device with specified derivation path and address type',
+    {
+      derivationPath: GetBitcoinAddressSchema.shape.derivationPath,
+      addressType: GetBitcoinAddressSchema.shape.addressType,
+      display: GetBitcoinAddressSchema.shape.display,
+      network: GetBitcoinAddressSchema.shape.network,
+    },
+    async (params) => {
+      try {
+        const result = await bitcoinToolHandlers.getBitcoinAddress(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Register tool: get_bitcoin_balance
+  server.tool(
+    'get_bitcoin_balance',
+    'Get Bitcoin balance for a given address on the specified Bitcoin network',
+    {
+      address: GetBitcoinBalanceSchema.shape.address,
+      network: GetBitcoinBalanceSchema.shape.network,
+    },
+    async (params) => {
+      try {
+        const result = await bitcoinToolHandlers.getBitcoinBalance(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Register tool: craft_bitcoin_transaction
+  server.tool(
+    'craft_bitcoin_transaction',
+    'Craft a Bitcoin PSBT (Partially Signed Bitcoin Transaction) for Ledger signing',
+    {
+      fromAddress: CraftBitcoinTransactionSchema.shape.fromAddress,
+      outputs: CraftBitcoinTransactionSchema.shape.outputs,
+      network: CraftBitcoinTransactionSchema.shape.network,
+      feeRate: CraftBitcoinTransactionSchema.shape.feeRate,
+      changeAddress: CraftBitcoinTransactionSchema.shape.changeAddress,
+      strategy: CraftBitcoinTransactionSchema.shape.strategy,
+    },
+    async (params) => {
+      try {
+        const result = await bitcoinToolHandlers.craftBitcoinTransaction(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Register tool: send_bitcoin
+  server.tool(
+    'send_bitcoin',
+    'Send Bitcoin to an address - convenience method that crafts, signs, and broadcasts the transaction',
+    {
+      to: SendBitcoinSchema.shape.to,
+      amount: SendBitcoinSchema.shape.amount,
+      network: SendBitcoinSchema.shape.network,
+      derivationPath: SendBitcoinSchema.shape.derivationPath,
+      addressType: SendBitcoinSchema.shape.addressType,
+      feeRate: SendBitcoinSchema.shape.feeRate,
+      enableRBF: SendBitcoinSchema.shape.enableRBF,
+    },
+    async (params) => {
+      try {
+        const result = await bitcoinToolHandlers.sendBitcoin(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Register tool: analyze_bitcoin_fees
+  server.tool(
+    'analyze_bitcoin_fees',
+    'Analyze Bitcoin network fees and get transaction cost estimates with recommendations',
+    {
+      network: AnalyzeBitcoinFeesSchema.shape.network,
+      transactionSize: AnalyzeBitcoinFeesSchema.shape.transactionSize,
+      inputCount: AnalyzeBitcoinFeesSchema.shape.inputCount,
+      outputCount: AnalyzeBitcoinFeesSchema.shape.outputCount,
+      addressType: AnalyzeBitcoinFeesSchema.shape.addressType,
+    },
+    async (params) => {
+      try {
+        const result = await bitcoinToolHandlers.analyzeBitcoinFees(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
   // Register a resource for server information
   server.resource(
     'server-info',
@@ -658,6 +864,11 @@ async function startServer() {
                     'send_erc721_token',
                     'manage_token_approval',
                     'analyze_gas',
+                    'get_bitcoin_address',
+                    'get_bitcoin_balance',
+                    'craft_bitcoin_transaction',
+                    'send_bitcoin',
+                    'analyze_bitcoin_fees',
                   ],
                   resources: ['server-info'],
                   prompts: ['transaction-review'],
@@ -669,6 +880,8 @@ async function startServer() {
                   'arbitrum',
                   'optimism',
                   'base',
+                  'bitcoin',
+                  'bitcoin-testnet',
                 ],
               },
               null,
@@ -783,8 +996,8 @@ Please explain what this transaction will do, any potential risks, and whether i
   try {
     await server.connect(transport);
     console.error(`${SERVER_NAME} is running and ready to receive requests via stdio`);
-    console.error('Available tools: get_ledger_address, get_balance, get_token_balances, get_nft_balances, craft_transaction, get_contract_abi, sign_transaction, sign_message, broadcast_transaction, send_eth, send_erc20_token, send_erc721_token, manage_token_approval, analyze_gas');
-    console.error('Supported networks: mainnet, sepolia, polygon, arbitrum, optimism, base');
+    console.error('Available tools: get_ledger_address, get_balance, get_token_balances, get_nft_balances, craft_transaction, get_contract_abi, sign_transaction, sign_message, broadcast_transaction, send_eth, send_erc20_token, send_erc721_token, manage_token_approval, analyze_gas, get_bitcoin_address, get_bitcoin_balance, craft_bitcoin_transaction, send_bitcoin, analyze_bitcoin_fees');
+    console.error('Supported networks: mainnet, sepolia, polygon, arbitrum, optimism, base, bitcoin, bitcoin-testnet');
   } catch (error) {
     console.error('Failed to start server:', error);
     if (orchestrator) {

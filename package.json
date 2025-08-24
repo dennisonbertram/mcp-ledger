@@ -36,14 +36,18 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@ledgerhq/hw-app-btc": "^10.10.1",
     "@ledgerhq/hw-app-eth": "^6.38.6",
     "@ledgerhq/hw-transport": "^6.31.4",
     "@ledgerhq/hw-transport-node-hid": "^6.29.8",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "async-mutex": "^0.5.0",
     "axios": "^1.7.9",
+    "bitcoinjs-lib": "^6.1.7",
     "dotenv": "^16.6.1",
+    "ecpair": "^2.1.0",
     "node-cache": "^5.1.2",
+    "tiny-secp256k1": "^2.2.4",
     "viem": "^2.21.45",
     "ws": "^8.18.0",
     "zod": "^3.23.8"

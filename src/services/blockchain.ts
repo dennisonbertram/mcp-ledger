@@ -9,6 +9,7 @@ import {
   type Address,
   type Hash,
   type Hex,
+  type Chain,
   isAddress,
   formatEther,
   formatUnits,
@@ -24,6 +25,7 @@ import {
 } from 'viem/chains';
 import type {
   SupportedNetwork,
+  EthereumNetwork,
   NetworkConfig,
   TokenInfo,
   NFTInfo,
@@ -112,10 +114,10 @@ interface CacheEntry<T> {
 }
 
 export class BlockchainService {
-  private clients: Map<SupportedNetwork, PublicClient> = new Map();
+  private clients: Map<EthereumNetwork, PublicClient> = new Map();
   private config: Required<BlockchainServiceConfig>;
   private cache: Map<string, CacheEntry<any>> = new Map();
-  private networkConfigs: Record<SupportedNetwork, typeof mainnet | typeof sepolia | typeof polygon | typeof arbitrum | typeof optimism | typeof base>;
+  private networkConfigs: Record<EthereumNetwork, Chain>;
 
   constructor(config?: BlockchainServiceConfig) {
     // Get RPC URLs with API key integration
@@ -139,7 +141,7 @@ export class BlockchainService {
       maxRetries: config?.maxRetries || 3,
     };
 
-    // Network chain configurations
+    // Network chain configurations (Ethereum only)
     this.networkConfigs = {
       mainnet,
       sepolia,
@@ -163,18 +165,20 @@ export class BlockchainService {
    * Get or create a public client for the specified network
    */
   private getClient(network: SupportedNetwork): PublicClient {
-    if (!this.networkConfigs[network]) {
+    // Check if this is an Ethereum network
+    if (!Object.keys(this.networkConfigs).includes(network)) {
       throw new BlockchainError(
-        `Network ${network} is not supported`,
+        `Network ${network} is not supported by BlockchainService (Ethereum networks only)`,
         BlockchainErrorCode.NETWORK_NOT_SUPPORTED,
         network
       );
     }
-
-    let client = this.clients.get(network);
+    
+    const ethNetwork = network as EthereumNetwork;
+    let client = this.clients.get(ethNetwork);
     if (!client) {
-      const chain = this.networkConfigs[network];
-      const networkConfig = this.config.networks?.[network];
+      const chain = this.networkConfigs[ethNetwork];
+      const networkConfig = this.config.networks?.[ethNetwork];
       
       client = createPublicClient({
         chain,
@@ -183,7 +187,7 @@ export class BlockchainService {
         }),
       }) as PublicClient;
 
-      this.clients.set(network, client);
+      this.clients.set(ethNetwork, client);
     }
 
     return client;

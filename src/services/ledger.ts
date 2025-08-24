@@ -1,6 +1,6 @@
 /**
  * Ledger Hardware Wallet Integration Service
- * Provides secure interaction with Ledger devices for Ethereum operations
+ * Provides secure interaction with Ledger devices for Ethereum and Bitcoin operations
  * FIXED: Race conditions with proper synchronization using mutex
  */
 
@@ -8,10 +8,13 @@ import TransportNodeHidModule from '@ledgerhq/hw-transport-node-hid';
 import type Transport from '@ledgerhq/hw-transport';
 import EthModule from '@ledgerhq/hw-app-eth';
 import type { LedgerEthTransactionResolution } from '@ledgerhq/hw-app-eth/lib/services/types';
+import BtcModule from '@ledgerhq/hw-app-btc';
 
 const TransportNodeHid = (TransportNodeHidModule as any).default;
 const Eth = (EthModule as any).default;
+const Btc = (BtcModule as any).default;
 import { Mutex } from 'async-mutex';
+import type { BitcoinNetwork, BitcoinAddress, BitcoinAddressType } from '../types/blockchain.js';
 
 /**
  * Error messages for better debugging
@@ -19,7 +22,9 @@ import { Mutex } from 'async-mutex';
 const ErrorMessages = {
   DEVICE_NOT_CONNECTED: 'Ledger device not connected',
   NOT_CONNECTED: 'Ledger not connected',
-  WRONG_APP: 'Wrong app opened on Ledger. Please open Ethereum app',
+  WRONG_APP: 'Wrong app opened on Ledger. Please open correct app',
+  WRONG_ETH_APP: 'Wrong app opened on Ledger. Please open Ethereum app',
+  WRONG_BTC_APP: 'Wrong app opened on Ledger. Please open Bitcoin app',
   USER_REJECTED_REQUEST: 'User rejected the request',
   USER_REJECTED_TRANSACTION: 'User rejected the transaction',
   DEVICE_DISCONNECTED: 'Ledger device disconnected',
@@ -64,7 +69,9 @@ export interface AppConfiguration {
 export class LedgerService {
   private transport: Transport | null = null;
   private ethApp: any | null = null;
+  private btcApp: any | null = null;
   private connected: boolean = false;
+  private currentApp: 'ethereum' | 'bitcoin' | null = null;
   
   // Mutex for synchronizing connection operations
   private connectionMutex: Mutex = new Mutex();
@@ -148,6 +155,7 @@ export class LedgerService {
 
       this.transport = await Promise.race([connectionPromise, timeoutPromise]);
       this.ethApp = new Eth(this.transport);
+      this.btcApp = new Btc({ transport: this.transport, currency: "bitcoin" });
       this.connected = true;
       this.connectionState = 'connected';
       
@@ -157,6 +165,8 @@ export class LedgerService {
       this.connectionState = 'disconnected';
       this.transport = null;
       this.ethApp = null;
+      this.btcApp = null;
+      this.currentApp = null;
 
       // Handle specific error cases
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -354,5 +364,233 @@ export class LedgerService {
 
     // Default error
     throw error;
+  }
+
+  // ============ Bitcoin Methods ============
+
+  /**
+   * Get Bitcoin address from Ledger
+   * @param path - BIP32 derivation path (e.g., "84'/0'/0'/0/0" for native segwit)
+   * @param addressType - Type of Bitcoin address to generate
+   * @param display - Whether to display address on device
+   * @param network - Bitcoin network (bitcoin or bitcoin-testnet)
+   * @returns Promise<BitcoinAddress>
+   */
+  public async getBitcoinAddress(
+    path: string,
+    addressType: BitcoinAddressType = 'segwit',
+    display: boolean = false,
+    network: BitcoinNetwork = 'bitcoin'
+  ): Promise<BitcoinAddress> {
+    return this.operationMutex.runExclusive(async () => {
+      if (!this.connected || !this.btcApp || this.connectionState !== 'connected') {
+        throw new Error(ErrorMessages.NOT_CONNECTED);
+      }
+
+      try {
+        this.currentApp = 'bitcoin';
+        
+        // Map address types to Ledger Bitcoin app formats
+        const addressFormat = this.getBitcoinAddressFormat(addressType);
+        
+        const result = await this.btcApp.getWalletPublicKey(path, {
+          format: addressFormat,
+          verify: display,
+        });
+
+        // Extract address from result
+        let address = result.bitcoinAddress;
+        
+        // For testnet, addresses might need conversion
+        if (network === 'bitcoin-testnet') {
+          // Handle testnet address formats if needed
+          address = this.convertToTestnetAddress(address, addressType);
+        }
+
+        return {
+          address,
+          type: addressType,
+          derivationPath: path,
+          publicKey: result.publicKey,
+        };
+      } catch (error: unknown) {
+        return this.handleBitcoinError(error, 'getBitcoinAddress');
+      }
+    });
+  }
+
+  /**
+   * Sign Bitcoin PSBT (Partially Signed Bitcoin Transaction)
+   * @param psbt - Base64 encoded PSBT
+   * @param derivationPaths - Array of derivation paths for inputs
+   * @returns Promise<string> - Signed PSBT in base64
+   */
+  public async signBitcoinPSBT(
+    psbt: string,
+    derivationPaths: string[]
+  ): Promise<string> {
+    return this.operationMutex.runExclusive(async () => {
+      if (!this.connected || !this.btcApp || this.connectionState !== 'connected') {
+        throw new Error(ErrorMessages.NOT_CONNECTED);
+      }
+
+      try {
+        this.currentApp = 'bitcoin';
+
+        // Convert derivation paths to the format expected by Ledger
+        const inputs = derivationPaths.map((path, index) => ({
+          index,
+          path,
+        }));
+
+        const result = await this.btcApp.signPsbt(psbt, inputs, null, null);
+        
+        return result;
+      } catch (error: unknown) {
+        return this.handleBitcoinError(error, 'signBitcoinPSBT');
+      }
+    });
+  }
+
+  /**
+   * Get Bitcoin wallet public key
+   * @param path - BIP32 derivation path
+   * @param addressType - Address type for format
+   * @returns Promise<{ publicKey: string; chainCode: string }>
+   */
+  public async getBitcoinPublicKey(
+    path: string,
+    addressType: BitcoinAddressType = 'segwit'
+  ): Promise<{ publicKey: string; chainCode: string }> {
+    return this.operationMutex.runExclusive(async () => {
+      if (!this.connected || !this.btcApp || this.connectionState !== 'connected') {
+        throw new Error(ErrorMessages.NOT_CONNECTED);
+      }
+
+      try {
+        this.currentApp = 'bitcoin';
+        
+        const addressFormat = this.getBitcoinAddressFormat(addressType);
+        
+        const result = await this.btcApp.getWalletPublicKey(path, {
+          format: addressFormat,
+          verify: false,
+        });
+
+        return {
+          publicKey: result.publicKey,
+          chainCode: result.chainCode,
+        };
+      } catch (error: unknown) {
+        return this.handleBitcoinError(error, 'getBitcoinPublicKey');
+      }
+    });
+  }
+
+  /**
+   * Map Bitcoin address type to Ledger format
+   */
+  private getBitcoinAddressFormat(addressType: BitcoinAddressType): string {
+    switch (addressType) {
+      case 'legacy':
+        return 'legacy';
+      case 'segwit':
+        return 'bech32';
+      case 'taproot':
+        return 'taproot';
+      default:
+        return 'bech32';
+    }
+  }
+
+  /**
+   * Convert mainnet address to testnet format
+   */
+  private convertToTestnetAddress(address: string, addressType: BitcoinAddressType): string {
+    // This is a simplified conversion - in production, you'd use a proper Bitcoin library
+    if (addressType === 'legacy' && address.startsWith('1')) {
+      // Convert P2PKH mainnet (1...) to testnet (m... or n...)
+      return 'm' + address.substring(1);
+    } else if (addressType === 'segwit' && address.startsWith('bc1')) {
+      // Convert bech32 mainnet (bc1...) to testnet (tb1...)
+      return 'tb1' + address.substring(3);
+    } else if (addressType === 'taproot' && address.startsWith('bc1p')) {
+      // Convert taproot mainnet (bc1p...) to testnet (tb1p...)
+      return 'tb1p' + address.substring(4);
+    }
+    
+    return address; // Return as-is if no conversion needed
+  }
+
+  /**
+   * Handle Bitcoin-specific errors
+   */
+  private handleBitcoinError(error: unknown, operation: string): never {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // User rejection errors
+    if (errorMessage.includes('0x6985') || errorMessage.includes('denied by the user')) {
+      if (operation === 'signBitcoinPSBT') {
+        throw new Error(ErrorMessages.USER_REJECTED_TRANSACTION);
+      }
+      throw new Error(ErrorMessages.USER_REJECTED_REQUEST);
+    }
+
+    // Wrong app opened (Bitcoin app not open)
+    if (errorMessage.includes('0x6e00') || errorMessage.includes('UNKNOWN_ERROR')) {
+      throw new Error(ErrorMessages.WRONG_BTC_APP);
+    }
+
+    // Device disconnected
+    if (errorMessage.includes('Device is not connected') || errorMessage.includes('Device disconnected')) {
+      throw new Error(ErrorMessages.DEVICE_DISCONNECTED);
+    }
+
+    // Device locked
+    if (errorMessage.includes('Device is locked')) {
+      throw new Error(ErrorMessages.DEVICE_LOCKED);
+    }
+
+    // Invalid PSBT data
+    if (errorMessage.includes('0x6a80') || errorMessage.includes('Invalid data')) {
+      throw new Error('Invalid Bitcoin transaction or PSBT format');
+    }
+
+    // Default error
+    throw error;
+  }
+
+  /**
+   * Check which app is currently active (Ethereum or Bitcoin)
+   */
+  public getCurrentApp(): 'ethereum' | 'bitcoin' | null {
+    return this.currentApp;
+  }
+
+  /**
+   * Test app connectivity - try to connect to specific app
+   */
+  public async testAppConnection(appType: 'ethereum' | 'bitcoin'): Promise<boolean> {
+    if (!this.connected) {
+      return false;
+    }
+
+    try {
+      if (appType === 'ethereum' && this.ethApp) {
+        await this.ethApp.getAppConfiguration();
+        this.currentApp = 'ethereum';
+        return true;
+      } else if (appType === 'bitcoin' && this.btcApp) {
+        // Try a simple operation to test Bitcoin app
+        await this.btcApp.getWalletPublicKey("44'/0'/0'", { format: 'legacy', verify: false });
+        this.currentApp = 'bitcoin';
+        return true;
+      }
+    } catch (error) {
+      // App not available or wrong app open
+      return false;
+    }
+
+    return false;
   }
 }

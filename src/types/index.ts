@@ -341,6 +341,131 @@ export interface GasAnalysisResponse {
   };
 }
 
+// ============ Bitcoin MCP Tool Schemas ============
+
+export const GetBitcoinAddressSchema = z.object({
+  derivationPath: z.string().optional().default("84'/0'/0'/0/0").describe('BIP32 derivation path (default: native segwit)'),
+  addressType: z.enum(['legacy', 'segwit', 'taproot']).optional().default('segwit').describe('Bitcoin address type'),
+  display: z.boolean().optional().default(false).describe('Show address on Ledger screen for verification'),
+  network: z.enum(['bitcoin', 'bitcoin-testnet']).optional().default('bitcoin').describe('Bitcoin network'),
+});
+
+export const GetBitcoinBalanceSchema = z.object({
+  address: z.string().describe('Bitcoin address to check balance'),
+  network: z.enum(['bitcoin', 'bitcoin-testnet']).optional().default('bitcoin').describe('Bitcoin network'),
+});
+
+export const CraftBitcoinTransactionSchema = z.object({
+  fromAddress: z.string().describe('Sender Bitcoin address'),
+  outputs: z.array(z.object({
+    address: z.string().describe('Recipient Bitcoin address'),
+    value: z.number().positive().describe('Amount in satoshis'),
+  })).min(1).describe('Transaction outputs'),
+  network: z.enum(['bitcoin', 'bitcoin-testnet']).optional().default('bitcoin').describe('Bitcoin network'),
+  feeRate: z.number().positive().optional().describe('Fee rate in sat/vB (will use network estimate if not provided)'),
+  changeAddress: z.string().optional().describe('Custom change address (uses sender if not provided)'),
+  strategy: z.enum(['largest-first', 'smallest-first', 'optimal']).optional().default('optimal').describe('UTXO selection strategy'),
+});
+
+export const SendBitcoinSchema = z.object({
+  to: z.string().describe('Recipient Bitcoin address'),
+  amount: z.number().positive().describe('Amount to send in satoshis'),
+  network: z.enum(['bitcoin', 'bitcoin-testnet']).optional().default('bitcoin').describe('Bitcoin network'),
+  derivationPath: z.string().optional().default("84'/0'/0'/0/0").describe('BIP32 derivation path for sender'),
+  addressType: z.enum(['legacy', 'segwit', 'taproot']).optional().default('segwit').describe('Sender address type'),
+  feeRate: z.number().positive().optional().describe('Custom fee rate in sat/vB'),
+  enableRBF: z.boolean().optional().default(true).describe('Enable Replace-by-Fee'),
+});
+
+export const AnalyzeBitcoinFeesSchema = z.object({
+  network: z.enum(['bitcoin', 'bitcoin-testnet']).optional().default('bitcoin').describe('Bitcoin network'),
+  transactionSize: z.number().positive().optional().describe('Estimated transaction size in bytes'),
+  inputCount: z.number().positive().optional().default(2).describe('Number of transaction inputs'),
+  outputCount: z.number().positive().optional().default(2).describe('Number of transaction outputs'),
+  addressType: z.enum(['legacy', 'segwit', 'taproot']).optional().default('segwit').describe('Address type for fee calculation'),
+});
+
+// Bitcoin Response Interfaces
+
+export interface BitcoinAddressResponse {
+  address: string;
+  type: 'legacy' | 'segwit' | 'taproot';
+  derivationPath: string;
+  publicKey: string;
+  network: 'bitcoin' | 'bitcoin-testnet';
+}
+
+export interface BitcoinBalanceResponse {
+  address: string;
+  confirmed: number;      // satoshis
+  unconfirmed: number;    // satoshis
+  total: number;          // satoshis
+  balanceInBTC: string;   // formatted BTC amount
+  balanceInUSD?: number;  // USD value if available
+  utxoCount: number;
+  network: 'bitcoin' | 'bitcoin-testnet';
+}
+
+export interface BitcoinTransactionResponse {
+  success: boolean;
+  txid: string;
+  fee: number;               // satoshis
+  feeRate: number;           // sat/vB
+  size: number;              // bytes
+  vsize: number;             // virtual bytes
+  confirmations: number;
+  inputs: Array<{
+    txid: string;
+    vout: number;
+    value: number;           // satoshis
+  }>;
+  outputs: Array<{
+    address: string;
+    value: number;           // satoshis
+  }>;
+  network: 'bitcoin' | 'bitcoin-testnet';
+  explorerUrl: string;
+}
+
+export interface BitcoinPSBTResponse {
+  psbt: string;              // base64 encoded PSBT
+  fee: number;               // satoshis
+  feeRate: number;           // sat/vB
+  size: number;              // transaction size in bytes
+  vsize: number;             // virtual size in bytes
+  inputCount: number;
+  outputCount: number;
+  serializedTransaction?: string; // hex encoded transaction (if finalized)
+  network: 'bitcoin' | 'bitcoin-testnet';
+}
+
+export interface BitcoinFeeAnalysisResponse {
+  network: 'bitcoin' | 'bitcoin-testnet';
+  currentFees: {
+    minimum: { feeRate: number; totalFee: number; costInBTC: string; };
+    economy: { feeRate: number; totalFee: number; costInBTC: string; timeEstimate: string; };
+    slow: { feeRate: number; totalFee: number; costInBTC: string; timeEstimate: string; };
+    standard: { feeRate: number; totalFee: number; costInBTC: string; timeEstimate: string; };
+    fast: { feeRate: number; totalFee: number; costInBTC: string; timeEstimate: string; };
+  };
+  mempoolStats?: {
+    size: number;              // transactions in mempool
+    totalFees: number;         // total fees in mempool
+    averageFeeRate: number;    // average fee rate
+  };
+  transactionEstimate?: {
+    inputCount: number;
+    outputCount: number;
+    estimatedSize: number;     // bytes
+    estimatedVsize: number;    // virtual bytes
+    addressType: string;
+  };
+  recommendations: {
+    recommended: 'minimum' | 'economy' | 'slow' | 'standard' | 'fast';
+    reasoning: string;
+  };
+}
+
 // Tool metadata
 export interface ToolMetadata {
   name: string;

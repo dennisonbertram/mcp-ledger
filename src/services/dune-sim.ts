@@ -5,7 +5,7 @@
 
 import axios from 'axios';
 import { getApiConfig } from '../config/environment.js';
-import type { SupportedNetwork } from '../types/blockchain.js';
+import type { SupportedNetwork, EthereumNetwork } from '../types/blockchain.js';
 
 export interface DuneSimTokenBalance {
   address: string;
@@ -69,8 +69,8 @@ export interface DuneSimConfig {
   useAllowlist?: boolean;
 }
 
-// Network mapping for Dune Sim API
-const NETWORK_CHAIN_IDS: Record<SupportedNetwork, number> = {
+// Network mapping for Dune Sim API (Ethereum networks only)
+const NETWORK_CHAIN_IDS: Record<EthereumNetwork, number> = {
   mainnet: 1,
   sepolia: 11155111,
   polygon: 137,
@@ -136,7 +136,11 @@ export class DuneSimService {
     }
 
     try {
-      const chainIds = networks.map(network => NETWORK_CHAIN_IDS[network]).join(',');
+      // Filter to only Ethereum networks that Dune Sim supports
+      const ethNetworks = networks.filter((n): n is EthereumNetwork => 
+        Object.keys(NETWORK_CHAIN_IDS).includes(n)
+      );
+      const chainIds = ethNetworks.map(network => NETWORK_CHAIN_IDS[network]).join(',');
       const url = `${this.baseUrl}/balances/${address}?chain_ids=${chainIds}`;
 
       const response = await axios.get(url, {
@@ -195,8 +199,13 @@ export class DuneSimService {
       throw new Error('Dune Sim API key not configured');
     }
 
+    // Check if network is supported by Dune Sim (Ethereum networks only)
+    if (!Object.keys(NETWORK_CHAIN_IDS).includes(network)) {
+      throw new Error(`Network ${network} not supported by Dune Sim API`);
+    }
+
     try {
-      const chainId = NETWORK_CHAIN_IDS[network];
+      const chainId = NETWORK_CHAIN_IDS[network as EthereumNetwork];
       let url = `${this.baseUrl}/token-info/${tokenAddress}?chain_ids=${chainId}`;
       
       if (config.includeHistoricalPrices) {
@@ -247,7 +256,11 @@ export class DuneSimService {
     }
 
     try {
-      const chainIds = networks.map(network => NETWORK_CHAIN_IDS[network]).join(',');
+      // Filter to only Ethereum networks that Dune Sim supports
+      const ethNetworks = networks.filter((n): n is EthereumNetwork => 
+        Object.keys(NETWORK_CHAIN_IDS).includes(n)
+      );
+      const chainIds = ethNetworks.map(network => NETWORK_CHAIN_IDS[network]).join(',');
       let url = `${this.baseUrl}/activity/${address}?chain_ids=${chainIds}&limit=${limit}`;
       
       if (offset) {
@@ -298,7 +311,11 @@ export class DuneSimService {
     }
 
     try {
-      const chainIds = networks.map(network => NETWORK_CHAIN_IDS[network]).join(',');
+      // Filter to only Ethereum networks that Dune Sim supports
+      const ethNetworks = networks.filter((n): n is EthereumNetwork => 
+        Object.keys(NETWORK_CHAIN_IDS).includes(n)
+      );
+      const chainIds = ethNetworks.map(network => NETWORK_CHAIN_IDS[network]).join(',');
       const url = `${this.baseUrl}/collectibles/${address}?chain_ids=${chainIds}`;
 
       const response = await axios.get(url, {
@@ -380,7 +397,10 @@ export class DuneSimService {
    * Convert network name to chain ID
    */
   static getChainId(network: SupportedNetwork): number {
-    return NETWORK_CHAIN_IDS[network];
+    if (!(network in NETWORK_CHAIN_IDS)) {
+      throw new Error(`Network ${network} not supported by Dune Sim API`);
+    }
+    return NETWORK_CHAIN_IDS[network as EthereumNetwork];
   }
 
   /**

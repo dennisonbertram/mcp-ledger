@@ -34,6 +34,7 @@ import type {
   GasEstimation,
   BaseTransactionParams,
 } from '../types/transaction-crafter.js';
+import type { EthereumNetwork } from '../types/blockchain.js';
 
 import {
   ValidationErrorCode,
@@ -292,8 +293,8 @@ export class TransactionCrafter {
 
     // Get token info and ABI
     const [tokenInfo, contractABI] = await Promise.all([
-      this.blockchainService.getTokenInfo(params.tokenAddress, params.network),
-      this.blockscoutClient.getContractABI(params.tokenAddress, params.network),
+      this.blockchainService.getTokenInfo(params.tokenAddress, params.network as EthereumNetwork),
+      this.blockscoutClient.getContractABI(params.tokenAddress, params.network as EthereumNetwork),
     ]);
 
     // Use provided decimals or fetch from contract
@@ -455,7 +456,7 @@ export class TransactionCrafter {
     if (!abi) {
       const contractABI = await this.blockscoutClient.getContractABI(
         params.contractAddress,
-        params.network
+        params.network as EthereumNetwork
       );
       
       abi = contractABI;
