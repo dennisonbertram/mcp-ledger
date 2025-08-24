@@ -21,8 +21,32 @@ import { validateConfiguration } from '../config/environment.js';
 const app = express();
 const PORT = process.env.LEDGER_PROXY_PORT || 3001;
 
+// Simple API key authentication
+const API_KEY = process.env.LEDGER_PROXY_API_KEY || 'ledger-proxy-dev-key';
+
+/**
+ * Authentication middleware for HTTP requests
+ * Checks for X-API-Key header with valid API key
+ */
+const authenticateRequest = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const providedKey = req.headers['x-api-key'];
+  
+  if (!providedKey || providedKey !== API_KEY) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized - Valid API key required',
+      hint: 'Include X-API-Key header with valid API key'
+    });
+  }
+  
+  next();
+};
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'https://localhost:3000'],
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 
 // Schemas
@@ -132,7 +156,7 @@ app.get('/health', (req, res) => {
 /**
  * Get Ledger address
  */
-app.post('/ledger/address', async (req, res) => {
+app.post('/ledger/address', authenticateRequest, async (req, res) => {
   try {
     const { derivationPath, verify } = GetAddressSchema.parse(req.body);
     
@@ -163,7 +187,7 @@ app.post('/ledger/address', async (req, res) => {
 /**
  * Craft transaction (prepare for Ledger signing)
  */
-app.post('/ledger/craft-transaction', async (req, res) => {
+app.post('/ledger/craft-transaction', authenticateRequest, async (req, res) => {
   try {
     const { to, value, data, network } = CraftTransactionSchema.parse(req.body);
     
@@ -233,7 +257,7 @@ app.post('/ledger/craft-transaction', async (req, res) => {
 /**
  * List connected devices
  */
-app.get('/ledger/devices', async (req, res) => {
+app.get('/ledger/devices', authenticateRequest, async (req, res) => {
   try {
     const devices = await TransportNodeHid.list();
     res.json({
@@ -257,7 +281,7 @@ app.get('/ledger/devices', async (req, res) => {
 /**
  * Disconnect Ledger
  */
-app.post('/ledger/disconnect', async (req, res) => {
+app.post('/ledger/disconnect', authenticateRequest, async (req, res) => {
   try {
     await disconnectLedger();
     res.json({

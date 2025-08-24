@@ -273,6 +273,35 @@ const mcpHandler = createMcpHandler({
 // Create Hono app
 const app = new Hono();
 
+// Simple API key authentication for HTTP MCP
+const API_KEY = env.VERCEL_MCP_API_KEY || 'vercel-mcp-dev-key';
+
+/**
+ * Authentication middleware for MCP HTTP endpoints
+ * Checks for X-API-Key header with valid API key
+ */
+const authenticateMcpRequest = async (c: any, next: any) => {
+  // Skip auth for health and info endpoints
+  if (c.req.path === '/' || c.req.path === '/health') {
+    return await next();
+  }
+  
+  const providedKey = c.req.header('X-API-Key');
+  
+  if (!providedKey || providedKey !== API_KEY) {
+    return c.json({
+      error: 'Unauthorized - Valid API key required',
+      hint: 'Include X-API-Key header with valid API key',
+      documentation: 'See README.md for authentication setup'
+    }, 401);
+  }
+  
+  await next();
+};
+
+// Apply authentication middleware
+app.use('*', authenticateMcpRequest);
+
 // Root endpoint with server info
 app.get('/', (c: any) => {
   const config = {

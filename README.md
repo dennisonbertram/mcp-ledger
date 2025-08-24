@@ -125,6 +125,18 @@ The server will show configuration status on startup:
 - **Blockscout API** - Contract verification and ABI retrieval
 - **MCP SDK** - Protocol compliance for AI agent integration
 
+### Transport Modes
+
+**STDIO Transport (Default):**
+- Local process communication via stdin/stdout
+- Perfect for Claude Desktop, Cursor, and personal use
+- No authentication required
+
+**HTTP Transport (Optional):**  
+- Web-accessible endpoints for Next.js integration
+- Supports multiple concurrent clients
+- **Requires API key authentication** for security
+
 ## Usage with AI Agents
 
 The server can be integrated with Claude Desktop, Cursor, or other MCP-compatible AI tools for secure blockchain operations:
@@ -146,6 +158,20 @@ The server can be integrated with Claude Desktop, Cursor, or other MCP-compatibl
 - Comprehensive input validation using Zod schemas
 - Multi-layer error handling with graceful degradation
 - Transaction validation before signing
+
+### Transport Security
+
+**STDIO Transport (Local Use):**
+- ✅ No authentication required - secure by default
+- ✅ Process isolation provides security boundary
+- ✅ Hardware wallet confirmation required for all transactions
+
+**HTTP Transport (Web Deployment):**
+- ⚠️ **Authentication required** - API keys mandatory
+- ⚠️ CORS configuration needed for web access
+- ⚠️ Use HTTPS in production
+
+See [`docs/authentication.md`](docs/authentication.md) for detailed setup instructions.
 
 ## Contributing
 
