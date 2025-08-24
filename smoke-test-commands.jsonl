@@ -1,8 +1,0 @@
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{"roots":{"listChanged":true},"sampling":{}},"clientInfo":{"name":"smoke-test","version":"1.0.0"}}}
-{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
-{"jsonrpc":"2.0","id":3,"method":"resources/list","params":{}}
-{"jsonrpc":"2.0","id":4,"method":"prompts/list","params":{}}
-{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"get_balance","arguments":{"address":"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045","network":"mainnet"}}}
-{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"get_contract_abi","arguments":{"contractAddress":"0xA0b86a33E6842d1e87ea5b7dE5bf3b7Cdb74dA9B","network":"mainnet"}}}
-{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"get_token_balances","arguments":{"address":"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045","network":"mainnet","tokenAddresses":["0xA0b86a33E6842d1e87ea5b7dE5bf3b7Cdb74dA9B"]}}}
-{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"get_ledger_address","arguments":{}}}
