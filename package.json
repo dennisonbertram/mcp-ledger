@@ -1,5 +1,5 @@
 {
-  "name": "mcp-ledger-server",
+  "name": "mcp-ledger",
   "version": "1.0.0",
   "description": "Model Context Protocol server for Ledger hardware wallet integration with Ethereum",
   "main": "dist/index.js",
@@ -23,7 +23,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/crazyrabbitltc/mcp-ledger"
+    "url": "git+https://github.com/crazyrabbitltc/mcp-ledger.git"
   },
   "homepage": "https://github.com/crazyrabbitltc/mcp-ledger",
   "bugs": {
