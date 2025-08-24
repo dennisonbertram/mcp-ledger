@@ -9,11 +9,14 @@ import cors from 'cors';
 import TransportNodeHid from '@ledgerhq/hw-transport-node-hid';
 import Eth from '@ledgerhq/hw-app-eth';
 import { z } from 'zod';
+import { parseEther } from 'viem';
 // Import from main project structure
-import type { SupportedNetwork } from '../../types/blockchain.js';
-import { TransactionCrafter } from '../../services/transaction-crafter.js';
-import { BlockchainService } from '../../services/blockchain.js';  
-import { validateConfiguration } from '../../config/environment.js';
+import type { SupportedNetwork } from '../types/blockchain.js';
+import { TransactionCrafter } from '../services/transaction-crafter.js';
+import { BlockchainService } from '../services/blockchain.js';
+import { BlockscoutClient } from '../services/blockscout.js';
+import { LedgerService } from '../services/ledger.js';
+import { validateConfiguration } from '../config/environment.js';
 
 const app = express();
 const PORT = process.env.LEDGER_PROXY_PORT || 3001;
@@ -41,14 +44,34 @@ let ethApp: Eth | null = null;
 
 // Services
 let blockchainService: BlockchainService;
+let blockscoutClient: BlockscoutClient;
+let ledgerService: LedgerService;
 let transactionCrafter: TransactionCrafter;
 
 /**
  * Initialize services
  */
 async function initializeServices() {
-  blockchainService = new BlockchainService();
-  transactionCrafter = new TransactionCrafter(blockchainService);
+  try {
+    console.log('Initializing services...');
+    
+    // Initialize core services
+    blockchainService = new BlockchainService();
+    blockscoutClient = new BlockscoutClient();
+    ledgerService = new LedgerService();
+    
+    // Initialize transaction crafter with all required services
+    transactionCrafter = new TransactionCrafter({
+      ledgerService,
+      blockscoutClient,
+      blockchainService
+    });
+    
+    console.log('✅ Services initialized successfully');
+  } catch (error) {
+    console.error('❌ Failed to initialize services:', error);
+    throw error;
+  }
 }
 
 /**
@@ -149,32 +172,47 @@ app.post('/ledger/craft-transaction', async (req, res) => {
     const addressResult = await ethApp.getAddress("44'/60'/0'/0/0");
     const fromAddress = addressResult.address;
     
-    // Craft the transaction
-    const transaction = await transactionCrafter.craftTransaction({
-      from: fromAddress,
-      to,
-      value: value || '0',
-      data: data || '0x',
-      network: network as SupportedNetwork
-    });
+    // Connect Ledger service if not connected
+    if (!ledgerService.isConnected()) {
+      await ledgerService.connectToLedger();
+    }
+    
+    // Craft the appropriate transaction based on whether data is provided
+    let transaction;
+    if (data && data !== '0x' && data !== '0x0') {
+      // Custom transaction with data
+      transaction = await transactionCrafter.craftCustomTransaction({
+        contractAddress: to,
+        methodName: 'fallback', // Or parse from data
+        params: [],
+        value: value ? parseEther(value) : undefined,
+        network: network as SupportedNetwork
+      });
+    } else {
+      // Simple ETH transfer
+      transaction = await transactionCrafter.craftETHTransfer({
+        to,
+        amount: value || '0',
+        network: network as SupportedNetwork
+      });
+    }
     
     res.json({
       success: true,
       transaction: {
         from: transaction.from,
         to: transaction.to,
-        value: transaction.value,
+        value: transaction.value?.toString(),
         data: transaction.data,
-        gasLimit: transaction.gasLimit,
-        gasPrice: transaction.gasPrice,
-        maxFeePerGas: transaction.maxFeePerGas,
-        maxPriorityFeePerGas: transaction.maxPriorityFeePerGas,
+        gasLimit: transaction.gasLimit?.toString(),
+        maxFeePerGas: transaction.maxFeePerGas?.toString(),
+        maxPriorityFeePerGas: transaction.maxPriorityFeePerGas?.toString(),
         nonce: transaction.nonce,
         chainId: transaction.chainId,
         type: transaction.type
       },
       network,
-      estimatedGas: transaction.gasLimit,
+      estimatedGas: transaction.gasLimit?.toString(),
       note: 'Transaction prepared but not signed. Use appropriate signing method.'
     });
   } catch (error) {

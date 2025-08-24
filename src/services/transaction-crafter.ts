@@ -231,9 +231,10 @@ export class TransactionCrafter {
       );
     }
 
-    // Get nonce (simplified - using block number as nonce for now)
-    const blockInfo = await this.blockchainService.getBlock(undefined, params.network);
-    const nonce = params.nonce !== undefined ? params.nonce : Number(blockInfo.number);
+    // Get proper nonce - CRITICAL FIX: Use transaction count, NOT block number!
+    const nonce = params.nonce !== undefined 
+      ? params.nonce 
+      : Number(await this.blockchainService.getTransactionCount(from, params.network));
 
     // Estimate gas
     const gasEstimation = await this.estimateGasWithCost(
@@ -325,8 +326,10 @@ export class TransactionCrafter {
 
     // Check ETH balance for gas
     const ethBalance = await this.blockchainService.getBalance(from, params.network);
-    const blockInfo = await this.blockchainService.getBlock(undefined, params.network);
-    const nonce = params.nonce !== undefined ? params.nonce : Number(blockInfo.number);
+    // Get proper nonce - CRITICAL FIX: Use transaction count, NOT block number!
+    const nonce = params.nonce !== undefined 
+      ? params.nonce 
+      : Number(await this.blockchainService.getTransactionCount(from, params.network));
 
     // Estimate gas
     const gasEstimation = await this.estimateGasWithCost(
@@ -398,8 +401,10 @@ export class TransactionCrafter {
 
     // Check ETH balance for gas
     const ethBalance = await this.blockchainService.getBalance(from, params.network);
-    const blockInfo = await this.blockchainService.getBlock(undefined, params.network);
-    const nonce = params.nonce !== undefined ? params.nonce : Number(blockInfo.number);
+    // Get proper nonce - CRITICAL FIX: Use transaction count, NOT block number!
+    const nonce = params.nonce !== undefined 
+      ? params.nonce 
+      : Number(await this.blockchainService.getTransactionCount(from, params.network));
 
     // Estimate gas
     const gasEstimation = await this.estimateGasWithCost(
@@ -489,8 +494,10 @@ export class TransactionCrafter {
 
     // Check ETH balance for gas and value
     const ethBalance = await this.blockchainService.getBalance(from, params.network);
-    const blockInfo = await this.blockchainService.getBlock(undefined, params.network);
-    const nonce = params.nonce !== undefined ? params.nonce : Number(blockInfo.number);
+    // Get proper nonce - CRITICAL FIX: Use transaction count, NOT block number!
+    const nonce = params.nonce !== undefined 
+      ? params.nonce 
+      : Number(await this.blockchainService.getTransactionCount(from, params.network));
 
     // Estimate gas
     const gasEstimation = await this.estimateGasWithCost(

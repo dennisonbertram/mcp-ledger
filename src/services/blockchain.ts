@@ -622,6 +622,39 @@ export class BlockchainService {
   }
 
   /**
+   * Get transaction count (nonce) for an address
+   * CRITICAL: This is required for proper transaction crafting
+   * Using block numbers as nonces is a catastrophic bug
+   */
+  async getTransactionCount(
+    address: string,
+    network: SupportedNetwork,
+    blockTag: 'latest' | 'pending' | 'earliest' = 'pending'
+  ): Promise<bigint> {
+    const validAddress = this.validateAddress(address);
+    const client = this.getClient(network);
+
+    return this.executeWithRetry(async () => {
+      try {
+        // Use 'pending' by default to include pending transactions in the count
+        // This prevents nonce conflicts when multiple transactions are sent quickly
+        const count = await client.getTransactionCount({
+          address: validAddress,
+          blockTag
+        });
+        return count;
+      } catch (error) {
+        throw new BlockchainError(
+          `Failed to get transaction count: ${(error as Error).message}`,
+          BlockchainErrorCode.RPC_ERROR,
+          network,
+          error as Error
+        );
+      }
+    }, network);
+  }
+
+  /**
    * Get multiple token balances in batch
    */
   async getTokenBalances(

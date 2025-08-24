@@ -1,12 +1,14 @@
 /**
  * Ledger Hardware Wallet Integration Service
  * Provides secure interaction with Ledger devices for Ethereum operations
+ * FIXED: Race conditions with proper synchronization using mutex
  */
 
 import TransportNodeHid from '@ledgerhq/hw-transport-node-hid';
 import type Transport from '@ledgerhq/hw-transport';
 import Eth from '@ledgerhq/hw-app-eth';
 import type { LedgerEthTransactionResolution } from '@ledgerhq/hw-app-eth/lib/services/types';
+import { Mutex } from 'async-mutex';
 
 /**
  * Error messages for better debugging
@@ -54,15 +56,26 @@ export interface AppConfiguration {
 
 /**
  * LedgerService class for managing Ledger hardware wallet interactions
+ * FIXED: Added mutex for thread-safe operations and connection state management
  */
 export class LedgerService {
   private transport: Transport | null = null;
   private ethApp: Eth | null = null;
   private connected: boolean = false;
+  
+  // Mutex for synchronizing connection operations
+  private connectionMutex: Mutex = new Mutex();
+  // Mutex for synchronizing all operations
+  private operationMutex: Mutex = new Mutex();
+  // Track connection state to prevent multiple concurrent connections
+  private connectionState: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
+  // Store the connection promise to reuse for concurrent connection attempts
+  private activeConnectionPromise: Promise<boolean> | null = null;
 
   constructor() {
     // Initialize with disconnected state
     this.connected = false;
+    this.connectionState = 'disconnected';
   }
 
   /**
@@ -73,16 +86,56 @@ export class LedgerService {
   }
 
   /**
-   * Connect to Ledger device
+   * Connect to Ledger device with proper synchronization
+   * FIXED: Prevents multiple concurrent connections with mutex
    * @param timeout - Connection timeout in milliseconds (default: 5000)
    * @returns Promise<boolean> - True if connection successful
    */
   public async connectToLedger(timeout: number = 5000): Promise<boolean> {
-    // Don't create multiple connections
-    if (this.connected && this.transport) {
+    // If already connected, return immediately
+    if (this.connectionState === 'connected' && this.transport) {
       return true;
     }
 
+    // If a connection is already in progress, wait for it
+    if (this.connectionState === 'connecting' && this.activeConnectionPromise) {
+      return this.activeConnectionPromise;
+    }
+
+    // Acquire the connection mutex to prevent race conditions
+    return this.connectionMutex.runExclusive(async () => {
+      // Double-check after acquiring the lock
+      if (this.connectionState === 'connected' && this.transport) {
+        return true;
+      }
+
+      // If another connection started while we were waiting, use it
+      if (this.connectionState === 'connecting' && this.activeConnectionPromise) {
+        return this.activeConnectionPromise;
+      }
+
+      // Mark as connecting
+      this.connectionState = 'connecting';
+
+      // Create the connection promise that can be reused
+      this.activeConnectionPromise = this.performConnection(timeout);
+
+      try {
+        const result = await this.activeConnectionPromise;
+        return result;
+      } finally {
+        // Clear the active connection promise
+        this.activeConnectionPromise = null;
+      }
+    });
+  }
+
+  /**
+   * Perform the actual connection (internal method)
+   * @param timeout - Connection timeout in milliseconds
+   * @returns Promise<boolean>
+   */
+  private async performConnection(timeout: number): Promise<boolean> {
     try {
       // Create connection with timeout
       const connectionPromise = TransportNodeHid.create();
@@ -93,10 +146,12 @@ export class LedgerService {
       this.transport = await Promise.race([connectionPromise, timeoutPromise]);
       this.ethApp = new Eth(this.transport);
       this.connected = true;
+      this.connectionState = 'connected';
       
       return true;
     } catch (error: unknown) {
       this.connected = false;
+      this.connectionState = 'disconnected';
       this.transport = null;
       this.ethApp = null;
 
@@ -114,7 +169,8 @@ export class LedgerService {
   }
 
   /**
-   * Get Ethereum address from Ledger
+   * Get Ethereum address from Ledger with proper synchronization
+   * FIXED: Synchronized operation to prevent race conditions
    * @param path - BIP32 derivation path (e.g., "44'/60'/0'/0/0")
    * @param display - Whether to display address on device
    * @param chainCode - Whether to return chain code
@@ -125,20 +181,23 @@ export class LedgerService {
     display: boolean = false,
     chainCode: boolean = false
   ): Promise<LedgerAddress> {
-    if (!this.connected || !this.ethApp) {
-      throw new Error(ErrorMessages.NOT_CONNECTED);
-    }
+    return this.operationMutex.runExclusive(async () => {
+      if (!this.connected || !this.ethApp || this.connectionState !== 'connected') {
+        throw new Error(ErrorMessages.NOT_CONNECTED);
+      }
 
-    try {
-      const result = await this.ethApp.getAddress(path, display, chainCode);
-      return result;
-    } catch (error: unknown) {
-      return this.handleError(error, 'getAddress');
-    }
+      try {
+        const result = await this.ethApp.getAddress(path, display, chainCode);
+        return result;
+      } catch (error: unknown) {
+        return this.handleError(error, 'getAddress');
+      }
+    });
   }
 
   /**
-   * Sign a transaction using Ledger
+   * Sign a transaction using Ledger with proper synchronization
+   * FIXED: Synchronized operation to prevent race conditions
    * @param path - BIP32 derivation path
    * @param rawTxHex - Raw transaction in hexadecimal
    * @param resolution - Optional resolution data for clear signing
@@ -149,58 +208,71 @@ export class LedgerService {
     rawTxHex: string,
     resolution?: LedgerEthTransactionResolution | null
   ): Promise<TransactionSignature> {
-    if (!this.connected || !this.ethApp) {
-      throw new Error(ErrorMessages.NOT_CONNECTED);
-    }
+    return this.operationMutex.runExclusive(async () => {
+      if (!this.connected || !this.ethApp || this.connectionState !== 'connected') {
+        throw new Error(ErrorMessages.NOT_CONNECTED);
+      }
 
-    try {
-      const result = await this.ethApp.signTransaction(
-        path,
-        rawTxHex,
-        resolution || null
-      );
-      return result;
-    } catch (error: unknown) {
-      return this.handleError(error, 'signTransaction');
-    }
+      try {
+        const result = await this.ethApp.signTransaction(
+          path,
+          rawTxHex,
+          resolution || null
+        );
+        return result;
+      } catch (error: unknown) {
+        return this.handleError(error, 'signTransaction');
+      }
+    });
   }
 
   /**
-   * Get Ledger app configuration
+   * Get Ledger app configuration with proper synchronization
+   * FIXED: Synchronized operation to prevent race conditions
    * @returns Promise<AppConfiguration>
    */
   public async getAppConfiguration(): Promise<AppConfiguration> {
-    if (!this.connected || !this.ethApp) {
-      throw new Error(ErrorMessages.NOT_CONNECTED);
-    }
+    return this.operationMutex.runExclusive(async () => {
+      if (!this.connected || !this.ethApp || this.connectionState !== 'connected') {
+        throw new Error(ErrorMessages.NOT_CONNECTED);
+      }
 
-    try {
-      const result = await this.ethApp.getAppConfiguration();
-      return result;
-    } catch (error: unknown) {
-      return this.handleError(error, 'getAppConfiguration');
-    }
+      try {
+        const result = await this.ethApp.getAppConfiguration();
+        return result;
+      } catch (error: unknown) {
+        return this.handleError(error, 'getAppConfiguration');
+      }
+    });
   }
 
   /**
-   * Disconnect from Ledger device
+   * Disconnect from Ledger device with proper synchronization
+   * FIXED: Synchronized disconnect to prevent race conditions
    */
   public async disconnect(): Promise<void> {
-    if (!this.connected || !this.transport) {
-      this.connected = false;
-      return;
-    }
+    return this.connectionMutex.runExclusive(async () => {
+      // Mark as disconnecting to prevent new operations
+      this.connectionState = 'disconnected';
+      
+      if (!this.connected || !this.transport) {
+        this.connected = false;
+        this.transport = null;
+        this.ethApp = null;
+        return;
+      }
 
-    try {
-      await this.transport.close();
-    } catch {
-      // Gracefully handle disconnect errors - silently fail as device may already be disconnected
-      // In production, this could be logged to a proper logging service
-    } finally {
-      this.transport = null;
-      this.ethApp = null;
-      this.connected = false;
-    }
+      try {
+        await this.transport.close();
+      } catch {
+        // Gracefully handle disconnect errors - silently fail as device may already be disconnected
+        // In production, this could be logged to a proper logging service
+      } finally {
+        this.transport = null;
+        this.ethApp = null;
+        this.connected = false;
+      }
+    });
   }
 
   /**
@@ -225,7 +297,7 @@ export class LedgerService {
     }
 
     // Device disconnected
-    if (errorMessage.includes('Device is not connected')) {
+    if (errorMessage.includes('Device is not connected') || errorMessage.includes('Device disconnected')) {
       throw new Error(ErrorMessages.DEVICE_DISCONNECTED);
     }
 
