@@ -155,7 +155,7 @@ export class BlockchainService {
       console.log('✅ BlockchainService initialized with enhanced RPC providers');
     } else {
       console.log('⚠️  BlockchainService using public RPC endpoints (rate limited)');
-      console.log('   💡 Add ALCHEMY_API_KEY or INFURA_PROJECT_ID for enhanced performance');
+      console.log('   💡 Add ALCHEMY_API_KEY for enhanced performance');
     }
   }
 

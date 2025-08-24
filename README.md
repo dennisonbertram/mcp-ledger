@@ -11,7 +11,7 @@ A comprehensive Model Context Protocol (MCP) server for secure Ledger hardware w
 
 ⛓️ **Multi-Network Support**
 - Ethereum Mainnet, Sepolia, Polygon, Arbitrum, Optimism, Base
-- Enhanced RPC providers (Alchemy, Infura) with API key support
+- Enhanced RPC providers (Alchemy) with API key support
 - Fallback to public endpoints when API keys not configured
 
 🪙 **Comprehensive Token & NFT Discovery**
