@@ -11,12 +11,27 @@ import type {
   GetNftBalancesSchema,
   CraftTransactionSchema,
   GetContractAbiSchema,
+  SignTransactionSchema,
+  SignMessageSchema,
+  CraftAndSignTransactionSchema,
+  BroadcastTransactionSchema,
+  SendEthSchema,
+  SendErc20TokenSchema,
+  SendErc721TokenSchema,
+  ManageTokenApprovalSchema,
+  GasAnalysisSchema,
   LedgerAddressResponse,
   BalanceResponse,
   TokenBalancesResponse,
   NftBalancesResponse,
   TransactionResponse,
   ContractAbiResponse,
+  TransactionSignatureResponse,
+  MessageSignatureResponse,
+  BroadcastTransactionResponse,
+  SendTransactionResponse,
+  TokenApprovalResponse,
+  GasAnalysisResponse,
 } from '../types/index.js';
 
 /**
@@ -268,6 +283,31 @@ export class ToolHandlers {
         responseTransaction.gasPrice = preparedTx.gasPrice.toString();
       }
 
+      // Serialize the transaction for Ledger signing
+      const { serializeTransaction } = await import('viem');
+      
+      // Convert PreparedTransaction to viem-compatible format
+      const viemTx: any = {
+        to: preparedTx.to,
+        value: preparedTx.value,
+        data: preparedTx.data,
+        gas: preparedTx.gasLimit,
+        nonce: preparedTx.nonce,
+        chainId: preparedTx.chainId,
+      };
+      
+      // Add EIP-1559 or legacy fields based on transaction type
+      if (preparedTx.type === 'eip1559') {
+        viemTx.type = 'eip1559';
+        viemTx.maxFeePerGas = preparedTx.maxFeePerGas;
+        viemTx.maxPriorityFeePerGas = preparedTx.maxPriorityFeePerGas;
+      } else {
+        viemTx.type = 'legacy';
+        viemTx.gasPrice = preparedTx.gasPrice;
+      }
+      
+      const serializedTransaction = serializeTransaction(viemTx);
+
       return {
         transaction: responseTransaction,
         gasEstimation: {
@@ -277,6 +317,7 @@ export class ToolHandlers {
           estimatedCost: (preparedTx.gasLimit * (preparedTx.maxFeePerGas || 0n)).toString(),
           estimatedCostInEth: formatEther(preparedTx.gasLimit * (preparedTx.maxFeePerGas || 0n)),
         },
+        serializedTransaction,
         message: 'Transaction crafted successfully. Ready for Ledger signing.',
       };
     } catch (error) {
@@ -325,6 +366,186 @@ export class ToolHandlers {
       return response;
     } catch (error) {
       throw new Error(`Failed to get contract ABI: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Sign a transaction using the connected Ledger device
+   * @param params - Transaction data, derivation path, and network
+   * @returns The signature components and signed transaction
+   */
+  public async signTransaction(params: typeof SignTransactionSchema._type): Promise<TransactionSignatureResponse> {
+    try {
+      const ledgerService = this.orchestrator.getLedgerService();
+      
+      // Check if Ledger is connected
+      if (!ledgerService.isConnected()) {
+        throw new Error('Ledger device is not connected. Please connect your Ledger device.');
+      }
+
+      const derivationPath = params.derivationPath || "44'/60'/0'/0/0";
+      const transactionData = params.transactionData;
+      const network = params.network || 'mainnet';
+      
+      // Simple resolution data for Ledger signing
+      const resolution = {
+        domains: [],
+        externalPlugin: [],
+        plugin: [],
+        nfts: [],
+        erc20Tokens: []
+      };
+
+      console.log(`Signing transaction on ${network} with derivation path: ${derivationPath}`);
+      
+      // Sign the transaction with the Ledger device
+      // Remove 0x prefix if present - Ledger expects raw hex without prefix
+      const cleanTransactionData = transactionData.startsWith('0x') ? transactionData.slice(2) : transactionData;
+      
+      const signature = await ledgerService.signTransaction(
+        derivationPath,
+        cleanTransactionData,
+        resolution
+      );
+      
+      // Reconstruct the signed transaction properly using viem
+      const { serializeTransaction, keccak256, parseTransaction } = await import('viem');
+      
+      // Parse the original transaction to get its structure
+      const originalTransaction = parseTransaction(`0x${cleanTransactionData}`);
+      
+      // Convert signature components to proper format
+      const vValue = parseInt(signature.v, 16);
+      const signedTx = {
+        ...originalTransaction,
+        r: `0x${signature.r}` as `0x${string}`,
+        s: `0x${signature.s}` as `0x${string}`,
+        v: BigInt(vValue),
+      };
+      
+      // Serialize the signed transaction
+      const signedTransaction = serializeTransaction(signedTx);
+      const transactionHash = keccak256(signedTransaction);
+      
+      return {
+        signature: {
+          r: signature.r,
+          s: signature.s,
+          v: signature.v,
+        },
+        signedTransaction,
+        transactionHash,
+        network,
+        derivationPath,
+      };
+      
+    } catch (error) {
+      console.error('Sign transaction error:', error);
+      throw new Error(`Failed to sign transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Sign a message using the connected Ledger device (for Sign-In with Ethereum)
+   * @param params - Message and derivation path
+   * @returns The signature components
+   */
+  public async signMessage(params: typeof SignMessageSchema._type): Promise<MessageSignatureResponse> {
+    try {
+      const ledgerService = this.orchestrator.getLedgerService();
+      
+      // Check if Ledger is connected
+      if (!ledgerService.isConnected()) {
+        throw new Error('Ledger device is not connected. Please connect your Ledger device.');
+      }
+
+      const derivationPath = params.derivationPath || "44'/60'/0'/0/0";
+      
+      console.log(`Signing message with derivation path: ${derivationPath}`);
+      
+      // Get the address for this derivation path
+      const addressResult = await ledgerService.getAddress(derivationPath, false, true);
+      
+      // Sign the message with the Ledger device
+      const signature = await ledgerService.signPersonalMessage(derivationPath, params.message);
+      
+      // Format the signature as 0x + r + s + v
+      const fullSignature = `0x${signature.r}${signature.s}${signature.v}`;
+      
+      return {
+        signature: fullSignature,
+        address: addressResult.address,
+        derivationPath,
+        message: params.message,
+      };
+      
+    } catch (error) {
+      console.error('Sign message error:', error);
+      throw new Error(`Failed to sign message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Craft and sign a transaction in one convenient step
+   * @param params - Transaction parameters including signing derivation path
+   * @returns The signed transaction ready for broadcast
+   */
+  public async craftAndSignTransaction(params: typeof CraftAndSignTransactionSchema._type): Promise<TransactionSignatureResponse> {
+    try {
+      // First craft the transaction
+      const craftedTx = await this.craftTransaction(params);
+      
+      // Then sign it using the serialized transaction data
+      const signParams = {
+        transactionData: craftedTx.serializedTransaction,
+        derivationPath: params.derivationPath || "44'/60'/0'/0/0",
+        network: params.network || 'mainnet'
+      };
+      
+      return await this.signTransaction(signParams);
+    } catch (error) {
+      console.error('Craft and sign transaction error:', error);
+      throw new Error(`Failed to craft and sign transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Broadcast a signed transaction to the network
+   * @param params - Signed transaction hex and network
+   * @returns Transaction hash and status
+   */
+  public async broadcastTransaction(params: typeof BroadcastTransactionSchema._type): Promise<BroadcastTransactionResponse> {
+    try {
+      const blockchainService = this.orchestrator.getBlockchainService();
+      const network = params.network || 'mainnet';
+      
+      console.log(`Broadcasting transaction on ${network}...`);
+      
+      // Broadcast the signed transaction
+      const transactionHash = await blockchainService.broadcastTransaction(params.signedTransaction, network);
+      
+      // Get block explorer URL for the network
+      const blockExplorerUrls: Record<string, string> = {
+        mainnet: 'https://etherscan.io/tx/',
+        sepolia: 'https://sepolia.etherscan.io/tx/',
+        polygon: 'https://polygonscan.com/tx/',
+        arbitrum: 'https://arbiscan.io/tx/',
+        optimism: 'https://optimistic.etherscan.io/tx/',
+        base: 'https://basescan.org/tx/',
+      };
+      
+      const blockExplorerUrl = blockExplorerUrls[network] ? `${blockExplorerUrls[network]}${transactionHash}` : undefined;
+      
+      return {
+        transactionHash,
+        network,
+        status: 'pending',
+        blockExplorerUrl,
+      };
+      
+    } catch (error) {
+      console.error('Broadcast transaction error:', error);
+      throw new Error(`Failed to broadcast transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -389,5 +610,565 @@ export class ToolHandlers {
     };
     
     return commonNfts[network] || [];
+  }
+
+  // CONVENIENCE METHODS
+
+  /**
+   * Send ETH - Convenience method that crafts, signs, and broadcasts an ETH transfer
+   * @param params - Recipient, amount, network, and gas parameters
+   * @returns Complete transaction result with hash and status
+   */
+  public async sendEth(params: typeof SendEthSchema._type): Promise<SendTransactionResponse> {
+    try {
+      console.log(`Sending ${params.amount} ETH to ${params.to} on ${params.network || 'mainnet'}`);
+
+      // Step 1: Craft the transaction
+      const craftParams = {
+        type: 'eth_transfer' as const,
+        network: params.network || 'mainnet',
+        to: params.to,
+        amount: params.amount,
+        gasLimit: params.gasLimit,
+        maxFeePerGas: params.maxFeePerGas,
+        maxPriorityFeePerGas: params.maxPriorityFeePerGas,
+      };
+
+      const craftedTx = await this.craftTransaction(craftParams);
+
+      // Step 2: Sign the transaction
+      const signParams = {
+        transactionData: craftedTx.serializedTransaction,
+        derivationPath: params.derivationPath || "44'/60'/0'/0/0",
+        network: params.network || 'mainnet'
+      };
+
+      const signedTx = await this.signTransaction(signParams);
+
+      // Step 3: Broadcast the transaction
+      const broadcastParams = {
+        signedTransaction: signedTx.signedTransaction,
+        network: params.network || 'mainnet'
+      };
+
+      const broadcast = await this.broadcastTransaction(broadcastParams);
+
+      // Return consolidated response
+      return {
+        transactionHash: broadcast.transactionHash,
+        network: params.network || 'mainnet',
+        from: craftedTx.transaction.from,
+        to: params.to,
+        amount: params.amount,
+        gasUsed: craftedTx.gasEstimation.gasLimit,
+        status: broadcast.status,
+        blockExplorerUrl: broadcast.blockExplorerUrl,
+        type: 'eth_transfer'
+      };
+
+    } catch (error) {
+      console.error('Send ETH error:', error);
+      throw new Error(`Failed to send ETH: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Send ERC20 Token - Convenience method that crafts, signs, and broadcasts an ERC20 transfer
+   * @param params - Token address, recipient, amount, network, and gas parameters
+   * @returns Complete transaction result with hash and status
+   */
+  public async sendErc20Token(params: typeof SendErc20TokenSchema._type): Promise<SendTransactionResponse> {
+    try {
+      console.log(`Sending ${params.amount} tokens from ${params.tokenAddress} to ${params.to} on ${params.network || 'mainnet'}`);
+
+      // Step 1: Craft the transaction
+      const craftParams = {
+        type: 'erc20_transfer' as const,
+        network: params.network || 'mainnet',
+        to: params.to,
+        amount: params.amount,
+        tokenAddress: params.tokenAddress,
+        gasLimit: params.gasLimit,
+        maxFeePerGas: params.maxFeePerGas,
+        maxPriorityFeePerGas: params.maxPriorityFeePerGas,
+      };
+
+      const craftedTx = await this.craftTransaction(craftParams);
+
+      // Step 2: Sign the transaction
+      const signParams = {
+        transactionData: craftedTx.serializedTransaction,
+        derivationPath: params.derivationPath || "44'/60'/0'/0/0",
+        network: params.network || 'mainnet'
+      };
+
+      const signedTx = await this.signTransaction(signParams);
+
+      // Step 3: Broadcast the transaction
+      const broadcastParams = {
+        signedTransaction: signedTx.signedTransaction,
+        network: params.network || 'mainnet'
+      };
+
+      const broadcast = await this.broadcastTransaction(broadcastParams);
+
+      // Try to get token info for better response
+      let tokenSymbol = 'TOKEN';
+      try {
+        const blockchainService = this.orchestrator.getBlockchainService();
+        const tokenInfo = await blockchainService.getTokenInfo(params.tokenAddress as any, params.network || 'mainnet');
+        tokenSymbol = tokenInfo.symbol;
+      } catch (error) {
+        console.warn('Could not fetch token symbol:', error);
+      }
+
+      // Return consolidated response
+      return {
+        transactionHash: broadcast.transactionHash,
+        network: params.network || 'mainnet',
+        from: craftedTx.transaction.from,
+        to: params.to,
+        amount: params.amount,
+        gasUsed: craftedTx.gasEstimation.gasLimit,
+        status: broadcast.status,
+        blockExplorerUrl: broadcast.blockExplorerUrl,
+        type: 'erc20_transfer',
+        tokenInfo: {
+          address: params.tokenAddress,
+          symbol: tokenSymbol
+        }
+      };
+
+    } catch (error) {
+      console.error('Send ERC20 token error:', error);
+      throw new Error(`Failed to send ERC20 token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Send ERC721 NFT - Convenience method that crafts, signs, and broadcasts an ERC721 transfer
+   * @param params - Contract address, recipient, token ID, network, and gas parameters
+   * @returns Complete transaction result with hash and status
+   */
+  public async sendErc721Token(params: typeof SendErc721TokenSchema._type): Promise<SendTransactionResponse> {
+    try {
+      console.log(`Transferring NFT ${params.tokenId} from ${params.contractAddress} to ${params.to} on ${params.network || 'mainnet'}`);
+
+      // Get the from address first
+      const ledgerService = this.orchestrator.getLedgerService();
+      if (!ledgerService.isConnected()) {
+        await this.orchestrator.initialize();
+      }
+      const addressInfo = await ledgerService.getAddress(params.derivationPath || "44'/60'/0'/0/0");
+      const from = addressInfo.address;
+
+      // Step 1: Craft the custom transaction for ERC721 safeTransferFrom
+      const craftParams = {
+        type: 'custom' as const,
+        network: params.network || 'mainnet',
+        to: params.contractAddress, // For custom transactions, 'to' is the contract address
+        contractAddress: params.contractAddress,
+        methodName: 'safeTransferFrom',
+        methodParams: [from, params.to, params.tokenId],
+        value: '0',
+        gasLimit: params.gasLimit,
+        maxFeePerGas: params.maxFeePerGas,
+        maxPriorityFeePerGas: params.maxPriorityFeePerGas,
+      };
+
+      const craftedTx = await this.craftTransaction(craftParams);
+
+      // Step 2: Sign the transaction
+      const signParams = {
+        transactionData: craftedTx.serializedTransaction,
+        derivationPath: params.derivationPath || "44'/60'/0'/0/0",
+        network: params.network || 'mainnet'
+      };
+
+      const signedTx = await this.signTransaction(signParams);
+
+      // Step 3: Broadcast the transaction
+      const broadcastParams = {
+        signedTransaction: signedTx.signedTransaction,
+        network: params.network || 'mainnet'
+      };
+
+      const broadcast = await this.broadcastTransaction(broadcastParams);
+
+      // Return consolidated response
+      return {
+        transactionHash: broadcast.transactionHash,
+        network: params.network || 'mainnet',
+        from: craftedTx.transaction.from,
+        to: params.to,
+        amount: '1', // NFTs are always 1 unit
+        gasUsed: craftedTx.gasEstimation.gasLimit,
+        status: broadcast.status,
+        blockExplorerUrl: broadcast.blockExplorerUrl,
+        type: 'erc721_transfer',
+        tokenInfo: {
+          address: params.contractAddress,
+          tokenId: params.tokenId
+        }
+      };
+
+    } catch (error) {
+      console.error('Send ERC721 token error:', error);
+      throw new Error(`Failed to send ERC721 token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Manage Token Approvals - Convenience method to approve, revoke, increase, or decrease token allowances
+   * @param params - Token address, spender, action, amount, network, and gas parameters
+   * @returns Complete transaction result with hash and status
+   */
+  public async manageTokenApproval(params: typeof ManageTokenApprovalSchema._type): Promise<TokenApprovalResponse> {
+    try {
+      const { action, tokenAddress, spender, amount } = params;
+      const network = params.network || 'mainnet';
+      
+      console.log(`${action} token approval for ${tokenAddress} spender ${spender} on ${network}`);
+
+      let craftParams: any;
+      let finalAmount = '0';
+
+      switch (action) {
+        case 'approve':
+          if (!amount) throw new Error('Amount is required for approve action');
+          craftParams = {
+            type: 'erc20_approve' as const,
+            network,
+            tokenAddress,
+            spender,
+            amount,
+            gasLimit: params.gasLimit,
+            maxFeePerGas: params.maxFeePerGas,
+            maxPriorityFeePerGas: params.maxPriorityFeePerGas,
+          };
+          finalAmount = amount;
+          break;
+
+        case 'revoke':
+          craftParams = {
+            type: 'erc20_approve' as const,
+            network,
+            tokenAddress,
+            spender,
+            amount: '0',
+            gasLimit: params.gasLimit,
+            maxFeePerGas: params.maxFeePerGas,
+            maxPriorityFeePerGas: params.maxPriorityFeePerGas,
+          };
+          finalAmount = '0';
+          break;
+
+        case 'increase':
+        case 'decrease':
+          // For increase/decrease, we need to get current allowance first
+          // Then calculate new amount and use approve
+          throw new Error(`${action} action not yet implemented - use approve with specific amount instead`);
+
+        default:
+          throw new Error(`Unknown action: ${action}`);
+      }
+
+      // Step 1: Craft the transaction
+      const craftedTx = await this.craftTransaction(craftParams);
+
+      // Step 2: Sign the transaction
+      const signParams = {
+        transactionData: craftedTx.serializedTransaction,
+        derivationPath: params.derivationPath || "44'/60'/0'/0/0",
+        network
+      };
+
+      const signedTx = await this.signTransaction(signParams);
+
+      // Step 3: Broadcast the transaction
+      const broadcastParams = {
+        signedTransaction: signedTx.signedTransaction,
+        network
+      };
+
+      const broadcast = await this.broadcastTransaction(broadcastParams);
+
+      // Return consolidated response
+      return {
+        transactionHash: broadcast.transactionHash,
+        network,
+        token: tokenAddress,
+        spender,
+        action,
+        amount: finalAmount,
+        status: broadcast.status,
+        blockExplorerUrl: broadcast.blockExplorerUrl
+      };
+
+    } catch (error) {
+      console.error('Manage token approval error:', error);
+      throw new Error(`Failed to manage token approval: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Gas Analysis - Comprehensive gas estimation and network analysis tool
+   * @param params - Network, transaction type, and optional transaction details
+   * @returns Detailed gas analysis with current prices, estimates, and recommendations
+   */
+  public async analyzeGas(params: typeof GasAnalysisSchema._type): Promise<GasAnalysisResponse> {
+    try {
+      const network = params.network || 'mainnet';
+      console.log(`Analyzing gas conditions for ${network}${params.transactionType ? ` (${params.transactionType})` : ''}`);
+
+      const blockchainService = this.orchestrator.getBlockchainService();
+
+      // Get current gas prices and network stats
+      const currentBlock = await this.getCurrentBlockInfo(network);
+
+      // Calculate gas prices for different speeds
+      const baseFee = BigInt(currentBlock.baseFee);
+      const gasPrices = this.calculateGasPrices(baseFee);
+
+      // Get transaction-specific estimation if details provided
+      let transactionEstimate;
+      if (params.transactionType) {
+        transactionEstimate = await this.estimateTransactionGas(params, network);
+      }
+
+      // Determine network congestion level
+      const congestionLevel = this.calculateCongestionLevel(currentBlock.gasUsedPercent);
+
+      // Generate recommendations
+      const recommendations = this.generateGasRecommendations(gasPrices, congestionLevel, params.speed);
+
+      // Try to get ETH price for USD conversions (non-critical)
+      let ethPriceUsd: number | undefined;
+      try {
+        // This is a simple fallback - in production you'd use a price API
+        ethPriceUsd = 3000; // Placeholder - could integrate with CoinGecko/CoinMarketCap
+      } catch (error) {
+        console.warn('Could not fetch ETH price for USD conversion');
+      }
+
+      const result: GasAnalysisResponse = {
+        network,
+        timestamp: new Date().toISOString(),
+        currentGasPrices: {
+          slow: this.formatGasPrice(gasPrices.slow, transactionEstimate?.estimatedGasLimit || '21000', ethPriceUsd),
+          standard: this.formatGasPrice(gasPrices.standard, transactionEstimate?.estimatedGasLimit || '21000', ethPriceUsd),
+          fast: this.formatGasPrice(gasPrices.fast, transactionEstimate?.estimatedGasLimit || '21000', ethPriceUsd),
+          instant: this.formatGasPrice(gasPrices.instant, transactionEstimate?.estimatedGasLimit || '21000', ethPriceUsd),
+        },
+        networkStats: {
+          baseFee: currentBlock.baseFee,
+          baseFeeInGwei: (Number(currentBlock.baseFee) / 1e9).toFixed(2),
+          nextBlockBaseFee: this.calculateNextBaseFee(baseFee, currentBlock.gasUsedPercent).toString(),
+          gasUsedPercent: currentBlock.gasUsedPercent,
+          congestionLevel,
+        },
+        recommendations,
+      };
+
+      if (transactionEstimate) {
+        result.transactionEstimate = transactionEstimate;
+      }
+
+      return result;
+
+    } catch (error) {
+      console.error('Gas analysis error:', error);
+      throw new Error(`Failed to analyze gas: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get current block information
+   */
+  private async getCurrentBlockInfo(network: string): Promise<{ baseFee: string; gasUsedPercent: number }> {
+    try {
+      const blockchainService = this.orchestrator.getBlockchainService();
+      const client = (blockchainService as any).getClient(network);
+      
+      const block = await client.getBlock({ blockTag: 'latest' });
+      const gasUsedPercent = Number(block.gasUsed * BigInt(100) / block.gasLimit);
+      
+      return {
+        baseFee: block.baseFeePerGas?.toString() || '0',
+        gasUsedPercent,
+      };
+    } catch (error) {
+      console.warn('Could not get block info, using defaults:', error);
+      return { baseFee: '20000000000', gasUsedPercent: 50 }; // 20 gwei default
+    }
+  }
+
+  /**
+   * Calculate gas prices for different speeds based on base fee
+   */
+  private calculateGasPrices(baseFee: bigint) {
+    const slowPriorityFee = BigInt(1e9); // 1 gwei
+    const standardPriorityFee = BigInt(2e9); // 2 gwei
+    const fastPriorityFee = BigInt(5e9); // 5 gwei
+    const instantPriorityFee = BigInt(10e9); // 10 gwei
+
+    return {
+      slow: {
+        maxFeePerGas: baseFee + slowPriorityFee,
+        maxPriorityFeePerGas: slowPriorityFee,
+        estimatedTime: '5-10 minutes',
+      },
+      standard: {
+        maxFeePerGas: baseFee + standardPriorityFee,
+        maxPriorityFeePerGas: standardPriorityFee,
+        estimatedTime: '1-3 minutes',
+      },
+      fast: {
+        maxFeePerGas: baseFee + fastPriorityFee,
+        maxPriorityFeePerGas: fastPriorityFee,
+        estimatedTime: '15-30 seconds',
+      },
+      instant: {
+        maxFeePerGas: baseFee + instantPriorityFee,
+        maxPriorityFeePerGas: instantPriorityFee,
+        estimatedTime: '< 15 seconds',
+      },
+    };
+  }
+
+  /**
+   * Format gas price information with costs
+   */
+  private formatGasPrice(gasPrice: any, gasLimit: string, ethPriceUsd?: number) {
+    const totalCostWei = gasPrice.maxFeePerGas * BigInt(gasLimit);
+    const totalCostEth = Number(totalCostWei) / 1e18;
+    
+    const result: any = {
+      maxFeePerGas: gasPrice.maxFeePerGas.toString(),
+      maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas.toString(),
+      estimatedTime: gasPrice.estimatedTime,
+      costInWei: totalCostWei.toString(),
+      costInEth: totalCostEth.toFixed(8),
+    };
+
+    if (ethPriceUsd !== undefined) {
+      result.costInUsd = (totalCostEth * ethPriceUsd).toFixed(2);
+    }
+
+    return result;
+  }
+
+  /**
+   * Estimate gas for specific transaction types
+   */
+  private async estimateTransactionGas(params: any, network: string) {
+    const gasLimits = {
+      eth_transfer: 21000,
+      erc20_transfer: 65000,
+      erc20_approve: 46000,
+      nft_transfer: 85000,
+      contract_interaction: 150000, // Conservative estimate
+    };
+
+    const baseLimit = gasLimits[params.transactionType as keyof typeof gasLimits] || 150000;
+    const recommendedLimit = Math.floor(baseLimit * 1.2); // Add 20% buffer
+
+    const tips = [];
+    let explanation = '';
+
+    switch (params.transactionType) {
+      case 'eth_transfer':
+        explanation = 'Simple ETH transfer uses exactly 21,000 gas';
+        tips.push('ETH transfers have fixed gas cost');
+        break;
+      case 'erc20_transfer':
+        explanation = 'ERC20 transfers typically use ~65,000 gas';
+        tips.push('First-time recipients may cost more gas');
+        tips.push('Token contracts with transfer fees may use more gas');
+        break;
+      case 'erc20_approve':
+        explanation = 'ERC20 approvals typically use ~46,000 gas';
+        tips.push('Setting approval to 0 then to desired amount may be required for some tokens');
+        break;
+      case 'nft_transfer':
+        explanation = 'NFT transfers (safeTransferFrom) typically use ~85,000 gas';
+        tips.push('Gas cost varies by NFT contract complexity');
+        break;
+      case 'contract_interaction':
+        explanation = 'Contract interactions vary widely - this is a conservative estimate';
+        tips.push('Complex contracts may use significantly more gas');
+        tips.push('Consider simulating the transaction first');
+        break;
+    }
+
+    return {
+      type: params.transactionType,
+      estimatedGasLimit: baseLimit.toString(),
+      recommendedGasLimit: recommendedLimit.toString(),
+      explanation,
+      tips,
+    };
+  }
+
+  /**
+   * Calculate network congestion level
+   */
+  private calculateCongestionLevel(gasUsedPercent: number): 'low' | 'medium' | 'high' | 'extreme' {
+    if (gasUsedPercent < 50) return 'low';
+    if (gasUsedPercent < 80) return 'medium';
+    if (gasUsedPercent < 95) return 'high';
+    return 'extreme';
+  }
+
+  /**
+   * Calculate next block base fee using EIP-1559 formula
+   */
+  private calculateNextBaseFee(baseFee: bigint, gasUsedPercent: number): bigint {
+    const targetGasUsed = 50; // 50% target
+    const maxChangePercent = 12.5; // 12.5% max change per block
+    
+    if (gasUsedPercent > targetGasUsed) {
+      const increase = (gasUsedPercent - targetGasUsed) / targetGasUsed * maxChangePercent;
+      return baseFee + (baseFee * BigInt(Math.floor(increase * 100)) / BigInt(10000));
+    } else {
+      const decrease = (targetGasUsed - gasUsedPercent) / targetGasUsed * maxChangePercent;
+      return baseFee - (baseFee * BigInt(Math.floor(decrease * 100)) / BigInt(10000));
+    }
+  }
+
+  /**
+   * Generate gas recommendations based on network conditions
+   */
+  private generateGasRecommendations(gasPrices: any, congestionLevel: string, preferredSpeed?: string) {
+    let bestForCost: 'slow' | 'standard' | 'fast' | 'instant' = 'slow';
+    let bestForSpeed: 'slow' | 'standard' | 'fast' | 'instant' = 'instant';
+    let recommended: 'slow' | 'standard' | 'fast' | 'instant' = 'standard';
+    let reasoning = '';
+
+    switch (congestionLevel) {
+      case 'low':
+        recommended = preferredSpeed === 'slow' ? 'slow' : 'standard';
+        reasoning = 'Network congestion is low. Standard speed offers good balance of cost and speed.';
+        break;
+      case 'medium':
+        recommended = preferredSpeed === 'fast' || preferredSpeed === 'instant' ? 'fast' : 'standard';
+        reasoning = 'Medium network congestion. Standard speed should work well, or fast if urgent.';
+        break;
+      case 'high':
+        recommended = preferredSpeed === 'slow' ? 'standard' : 'fast';
+        reasoning = 'High network congestion. Fast speed recommended to avoid delays.';
+        break;
+      case 'extreme':
+        recommended = 'instant';
+        reasoning = 'Extreme network congestion. Instant speed recommended to ensure transaction inclusion.';
+        break;
+    }
+
+    return {
+      bestForSpeed,
+      bestForCost,
+      recommended,
+      reasoning,
+    };
   }
 }

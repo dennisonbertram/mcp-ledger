@@ -737,6 +737,33 @@ export class BlockchainService {
   }
 
   /**
+   * Broadcast a signed transaction to the network
+   */
+  async broadcastTransaction(signedTx: string, network: SupportedNetwork): Promise<string> {
+    return this.executeWithRetry(async () => {
+      const client = this.getClient(network);
+      
+      try {
+        const txHash = await client.sendRawTransaction({ 
+          serializedTransaction: signedTx as `0x${string}` 
+        });
+        
+        console.log(`Transaction broadcasted on ${network}: ${txHash}`);
+        return txHash;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`Failed to broadcast transaction on ${network}:`, errorMessage);
+        
+        throw new BlockchainError(
+          `Failed to broadcast transaction: ${errorMessage}`,
+          BlockchainErrorCode.RPC_ERROR,
+          network
+        );
+      }
+    }, network);
+  }
+
+  /**
    * Clear cache
    */
   clearCache(): void {

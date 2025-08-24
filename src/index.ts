@@ -14,6 +14,15 @@ import {
   GetNftBalancesSchema,
   CraftTransactionSchema,
   GetContractAbiSchema,
+  SignTransactionSchema,
+  SignMessageSchema,
+  CraftAndSignTransactionSchema,
+  BroadcastTransactionSchema,
+  SendEthSchema,
+  SendErc20TokenSchema,
+  SendErc721TokenSchema,
+  ManageTokenApprovalSchema,
+  GasAnalysisSchema,
 } from './types/index.js';
 import { ServiceOrchestrator } from './services/orchestrator.js';
 import { ToolHandlers } from './handlers/tools.js';
@@ -313,6 +322,304 @@ async function startServer() {
     }
   );
 
+  // Register tool: sign_transaction
+  server.tool(
+    'sign_transaction',
+    'Sign a prepared transaction using the connected Ledger device',
+    {
+      transactionData: SignTransactionSchema.shape.transactionData,
+      derivationPath: SignTransactionSchema.shape.derivationPath,
+      network: SignTransactionSchema.shape.network,
+    },
+    async (params) => {
+      try {
+        const result = await toolHandlers.signTransaction(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Register tool: sign_message
+  server.tool(
+    'sign_message',
+    'Sign a message using the connected Ledger device (for Sign-In with Ethereum)',
+    {
+      message: SignMessageSchema.shape.message,
+      derivationPath: SignMessageSchema.shape.derivationPath,
+    },
+    async (params) => {
+      try {
+        const result = await toolHandlers.signMessage(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Register tool: broadcast_transaction
+  server.tool(
+    'broadcast_transaction',
+    'Broadcast a signed transaction to the Ethereum network',
+    {
+      signedTransaction: BroadcastTransactionSchema.shape.signedTransaction,
+      network: BroadcastTransactionSchema.shape.network,
+    },
+    async (params) => {
+      try {
+        const result = await toolHandlers.broadcastTransaction(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // CONVENIENCE TOOLS
+
+  // Register tool: send_eth
+  server.tool(
+    'send_eth',
+    'Send ETH to an address - convenience method that crafts, signs, and broadcasts the transaction',
+    {
+      to: SendEthSchema.shape.to,
+      amount: SendEthSchema.shape.amount,
+      network: SendEthSchema.shape.network,
+      derivationPath: SendEthSchema.shape.derivationPath,
+      gasLimit: SendEthSchema.shape.gasLimit,
+      maxFeePerGas: SendEthSchema.shape.maxFeePerGas,
+      maxPriorityFeePerGas: SendEthSchema.shape.maxPriorityFeePerGas,
+    },
+    async (params) => {
+      try {
+        const result = await toolHandlers.sendEth(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Register tool: send_erc20_token
+  server.tool(
+    'send_erc20_token',
+    'Send ERC20 tokens to an address - convenience method that crafts, signs, and broadcasts the transaction',
+    {
+      to: SendErc20TokenSchema.shape.to,
+      amount: SendErc20TokenSchema.shape.amount,
+      tokenAddress: SendErc20TokenSchema.shape.tokenAddress,
+      network: SendErc20TokenSchema.shape.network,
+      derivationPath: SendErc20TokenSchema.shape.derivationPath,
+      gasLimit: SendErc20TokenSchema.shape.gasLimit,
+      maxFeePerGas: SendErc20TokenSchema.shape.maxFeePerGas,
+      maxPriorityFeePerGas: SendErc20TokenSchema.shape.maxPriorityFeePerGas,
+    },
+    async (params) => {
+      try {
+        const result = await toolHandlers.sendErc20Token(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Register tool: send_erc721_token
+  server.tool(
+    'send_erc721_token',
+    'Send ERC721 NFT to an address - convenience method that crafts, signs, and broadcasts the transaction',
+    {
+      to: SendErc721TokenSchema.shape.to,
+      tokenId: SendErc721TokenSchema.shape.tokenId,
+      contractAddress: SendErc721TokenSchema.shape.contractAddress,
+      network: SendErc721TokenSchema.shape.network,
+      derivationPath: SendErc721TokenSchema.shape.derivationPath,
+      gasLimit: SendErc721TokenSchema.shape.gasLimit,
+      maxFeePerGas: SendErc721TokenSchema.shape.maxFeePerGas,
+      maxPriorityFeePerGas: SendErc721TokenSchema.shape.maxPriorityFeePerGas,
+    },
+    async (params) => {
+      try {
+        const result = await toolHandlers.sendErc721Token(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Register tool: manage_token_approval
+  server.tool(
+    'manage_token_approval',
+    'Manage ERC20 token approvals (approve, revoke, increase, decrease) - convenience method that crafts, signs, and broadcasts the transaction',
+    {
+      action: ManageTokenApprovalSchema.shape.action,
+      tokenAddress: ManageTokenApprovalSchema.shape.tokenAddress,
+      spender: ManageTokenApprovalSchema.shape.spender,
+      amount: ManageTokenApprovalSchema.shape.amount,
+      network: ManageTokenApprovalSchema.shape.network,
+      derivationPath: ManageTokenApprovalSchema.shape.derivationPath,
+      gasLimit: ManageTokenApprovalSchema.shape.gasLimit,
+      maxFeePerGas: ManageTokenApprovalSchema.shape.maxFeePerGas,
+      maxPriorityFeePerGas: ManageTokenApprovalSchema.shape.maxPriorityFeePerGas,
+    },
+    async (params) => {
+      try {
+        const result = await toolHandlers.manageTokenApproval(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Register tool: analyze_gas
+  server.tool(
+    'analyze_gas',
+    'Analyze current gas prices, network conditions, and get transaction cost estimates with recommendations',
+    {
+      network: GasAnalysisSchema.shape.network,
+      transactionType: GasAnalysisSchema.shape.transactionType,
+      to: GasAnalysisSchema.shape.to,
+      tokenAddress: GasAnalysisSchema.shape.tokenAddress,
+      contractAddress: GasAnalysisSchema.shape.contractAddress,
+      methodName: GasAnalysisSchema.shape.methodName,
+      methodParams: GasAnalysisSchema.shape.methodParams,
+      value: GasAnalysisSchema.shape.value,
+      speed: GasAnalysisSchema.shape.speed,
+    },
+    async (params) => {
+      try {
+        const result = await toolHandlers.analyzeGas(params as any);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
   // Register a resource for server information
   server.resource(
     'server-info',
@@ -343,6 +650,14 @@ async function startServer() {
                     'get_nft_balances',
                     'craft_transaction',
                     'get_contract_abi',
+                    'sign_transaction',
+                    'sign_message',
+                    'broadcast_transaction',
+                    'send_eth',
+                    'send_erc20_token',
+                    'send_erc721_token',
+                    'manage_token_approval',
+                    'analyze_gas',
                   ],
                   resources: ['server-info'],
                   prompts: ['transaction-review'],
@@ -468,7 +783,7 @@ Please explain what this transaction will do, any potential risks, and whether i
   try {
     await server.connect(transport);
     console.error(`${SERVER_NAME} is running and ready to receive requests via stdio`);
-    console.error('Available tools: get_ledger_address, get_balance, get_token_balances, get_nft_balances, craft_transaction, get_contract_abi');
+    console.error('Available tools: get_ledger_address, get_balance, get_token_balances, get_nft_balances, craft_transaction, get_contract_abi, sign_transaction, sign_message, broadcast_transaction, send_eth, send_erc20_token, send_erc721_token, manage_token_approval, analyze_gas');
     console.error('Supported networks: mainnet, sepolia, polygon, arbitrum, optimism, base');
   } catch (error) {
     console.error('Failed to start server:', error);

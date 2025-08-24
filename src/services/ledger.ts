@@ -4,10 +4,13 @@
  * FIXED: Race conditions with proper synchronization using mutex
  */
 
-import TransportNodeHid from '@ledgerhq/hw-transport-node-hid';
+import TransportNodeHidModule from '@ledgerhq/hw-transport-node-hid';
 import type Transport from '@ledgerhq/hw-transport';
-import Eth from '@ledgerhq/hw-app-eth';
+import EthModule from '@ledgerhq/hw-app-eth';
 import type { LedgerEthTransactionResolution } from '@ledgerhq/hw-app-eth/lib/services/types';
+
+const TransportNodeHid = (TransportNodeHidModule as any).default;
+const Eth = (EthModule as any).default;
 import { Mutex } from 'async-mutex';
 
 /**
@@ -60,7 +63,7 @@ export interface AppConfiguration {
  */
 export class LedgerService {
   private transport: Transport | null = null;
-  private ethApp: Eth | null = null;
+  private ethApp: any | null = null;
   private connected: boolean = false;
   
   // Mutex for synchronizing connection operations
@@ -227,6 +230,41 @@ export class LedgerService {
   }
 
   /**
+   * Sign a personal message using Ledger with proper synchronization
+   * @param path - BIP32 derivation path (e.g., "44'/60'/0'/0/0")
+   * @param message - Message to sign (will be converted to hex)
+   * @returns Promise<TransactionSignature>
+   */
+  public async signPersonalMessage(
+    path: string,
+    message: string
+  ): Promise<TransactionSignature> {
+    return this.operationMutex.runExclusive(async () => {
+      if (!this.connected || !this.ethApp || this.connectionState !== 'connected') {
+        throw new Error(ErrorMessages.NOT_CONNECTED);
+      }
+
+      try {
+        // Convert message to hex format as expected by Ledger
+        const messageHex = Buffer.from(message).toString('hex');
+        
+        const result = await this.ethApp.signPersonalMessage(path, messageHex);
+        
+        // Convert v value (Ledger returns v + 27, we need the raw v)
+        const v = (result.v - 27).toString(16).padStart(2, '0');
+        
+        return {
+          r: result.r,
+          s: result.s,
+          v: v
+        };
+      } catch (error: unknown) {
+        return this.handleError(error, 'signPersonalMessage');
+      }
+    });
+  }
+
+  /**
    * Get Ledger app configuration with proper synchronization
    * FIXED: Synchronized operation to prevent race conditions
    * @returns Promise<AppConfiguration>
@@ -287,6 +325,9 @@ export class LedgerService {
     if (errorMessage.includes('0x6985') || errorMessage.includes('denied by the user')) {
       if (operation === 'signTransaction') {
         throw new Error(ErrorMessages.USER_REJECTED_TRANSACTION);
+      }
+      if (operation === 'signPersonalMessage') {
+        throw new Error(ErrorMessages.USER_REJECTED_REQUEST);
       }
       throw new Error(ErrorMessages.USER_REJECTED_REQUEST);
     }
