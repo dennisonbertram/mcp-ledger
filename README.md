@@ -28,25 +28,25 @@ A comprehensive Model Context Protocol (MCP) server for secure Ledger hardware w
 
 ## ⚠️ API Keys Required
 
-**For full functionality, you need API keys from external providers:**
+### 🔑 **Required API**
+- **Dune Sim API Key** - **Required** for all token/NFT discovery functionality
+  - Get your key at: [sim.dune.com](https://sim.dune.com)
+  - Provides reliable multi-chain token data (60+ networks)
+  - Real-time pricing, spam filtering, and activity monitoring
 
-### 🔑 **Essential API (Highly Recommended)**
-- **Dune Sim API Key** - 🌟 **Most reliable** multi-chain token/NFT discovery, pricing, and activity data
+### 📊 **Optional APIs (Performance)**  
+- **Alchemy API Key** - Improves RPC performance (recommended)
+  - Get your key at: [alchemy.com](https://alchemy.com)
+  - 2M+ requests/month free tier
+  
+- **Etherscan API Key** - Enables contract verification
+  - Get your key at: [etherscan.io/apis](https://etherscan.io/apis)
+  - 100k requests/day free tier
 
-### 📊 **Enhanced APIs (Optional)**  
-- **Alchemy API Key** - Enhanced RPC performance and fallback token discovery
-- **Etherscan API Key** - Contract verification and transaction history
-
-### 🔧 **Legacy APIs (Fallback)**  
-- **Moralis API Key** - Legacy token discovery (fallback)
-- **Infura Project ID** - Alternative RPC provider
-- **OpenSea API Key** - Enhanced NFT metadata
-- **Polygonscan, Arbiscan, etc.** - Multi-network explorer access
-
-### 🆓 **Without API Keys**
-- Basic ETH balance queries work with public RPC endpoints
-- Limited token discovery capabilities  
-- Rate limiting may affect performance
+### 🚫 **Without Dune Sim API**
+- **Token discovery will not work**
+- Only basic ETH balance queries available
+- **You must have DUNE_SIM_API_KEY for full functionality**
 
 ## MCP Tools
 
@@ -59,13 +59,15 @@ A comprehensive Model Context Protocol (MCP) server for secure Ledger hardware w
 
 ## 🚀 Quick Start
 
-### 1. **Get API Keys (Recommended)**
+### 1. **Get Required API Key**
 
 ```bash
-# Get API keys from:
-# - Dune Sim: https://sim.dune.com (Most reliable for token data)
-# - Alchemy: https://alchemy.com (Enhanced RPC, 2M+ requests/month free)
-# - Etherscan: https://etherscan.io/apis (Contract verification, 100k/day free)
+# Required: Get Dune Sim API key
+# Visit: https://sim.dune.com
+
+# Optional: Get enhanced performance APIs
+# - Alchemy: https://alchemy.com (RPC performance)
+# - Etherscan: https://etherscan.io/apis (contract verification)
 ```
 
 ### 2. **Configure Environment**
@@ -75,9 +77,9 @@ A comprehensive Model Context Protocol (MCP) server for secure Ledger hardware w
 cp .env.example .env
 
 # Add your API keys to .env file
-DUNE_SIM_API_KEY=your_dune_sim_api_key_here
-ALCHEMY_API_KEY=your_alchemy_api_key_here
-ETHERSCAN_API_KEY=your_etherscan_api_key_here
+DUNE_SIM_API_KEY=your_dune_sim_api_key_here  # REQUIRED
+ALCHEMY_API_KEY=your_alchemy_api_key_here    # Optional
+ETHERSCAN_API_KEY=your_etherscan_api_key_here # Optional
 ```
 
 ### 3. **Install and Run**
@@ -100,17 +102,20 @@ node test-server.cjs
 
 The server will show configuration status on startup:
 
-**With Dune Sim API key:**
+**With Dune Sim API key (Recommended):**
 ```
-✅ BlockchainService initialized with enhanced RPC providers
 ✅ Dune Sim API configured for reliable token discovery
+✅ Enhanced RPC provider configured (Alchemy)
+✅ Contract verification API configured (Etherscan)
 ```
 
-**Without API keys:**
+**Missing Dune Sim API key:**
 ```
-⚠️  BlockchainService using public RPC endpoints (rate limited)  
-⚠️  Enhanced token discovery requires API keys (Dune Sim recommended)
+❌ DUNE_SIM_API_KEY is required for token discovery functionality
+⚠️  No enhanced RPC provider configured. Using public endpoints (slower, rate limited).
 ```
+
+**⚠️ Important:** Without `DUNE_SIM_API_KEY`, token and NFT discovery tools will not work.
 
 ## Architecture
 
