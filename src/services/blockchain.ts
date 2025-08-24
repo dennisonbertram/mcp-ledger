@@ -630,28 +630,26 @@ export class BlockchainService {
     address: string,
     network: SupportedNetwork,
     blockTag: 'latest' | 'pending' | 'earliest' = 'pending'
-  ): Promise<bigint> {
+  ): Promise<number> {
     const validAddress = this.validateAddress(address);
     const client = this.getClient(network);
 
-    return this.executeWithRetry(async () => {
-      try {
-        // Use 'pending' by default to include pending transactions in the count
-        // This prevents nonce conflicts when multiple transactions are sent quickly
-        const count = await client.getTransactionCount({
-          address: validAddress,
-          blockTag
-        });
-        return count;
-      } catch (error) {
-        throw new BlockchainError(
-          `Failed to get transaction count: ${(error as Error).message}`,
-          BlockchainErrorCode.RPC_ERROR,
-          network,
-          error as Error
-        );
-      }
-    }, network);
+    try {
+      // Use 'pending' by default to include pending transactions in the count
+      // This prevents nonce conflicts when multiple transactions are sent quickly
+      const count = await client.getTransactionCount({
+        address: validAddress,
+        blockTag
+      });
+      return Number(count);
+    } catch (error) {
+      throw new BlockchainError(
+        `Failed to get transaction count: ${(error as Error).message}`,
+        BlockchainErrorCode.RPC_ERROR,
+        network,
+        error as Error
+      );
+    }
   }
 
   /**
