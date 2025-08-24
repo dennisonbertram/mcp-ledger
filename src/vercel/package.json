@@ -1,0 +1,30 @@
+{
+  "name": "mcp-ledger-vercel",
+  "version": "1.0.0",
+  "description": "Vercel AI powered MCP server for Ledger hardware wallet integration",
+  "main": "index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "vercel build",
+    "deploy": "vercel deploy",
+    "deploy:prod": "vercel deploy --prod"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.3",
+    "hono": "^4.9.2", 
+    "mcp-handler": "^1.0.1",
+    "viem": "^2.21.45",
+    "axios": "^1.7.9",
+    "zod": "^3.23.8",
+    "@vercel/kv": "^1.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.17",
+    "typescript": "^5.8.3",
+    "vercel": "latest"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

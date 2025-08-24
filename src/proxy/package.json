@@ -1,0 +1,34 @@
+{
+  "name": "mcp-ledger-proxy",
+  "version": "1.0.0",
+  "description": "Local Ledger hardware proxy service for MCP Ledger server",
+  "main": "ledger-proxy.ts",
+  "type": "module",
+  "scripts": {
+    "start": "tsx ledger-proxy.ts",
+    "dev": "tsx watch ledger-proxy.ts",
+    "build": "tsc",
+    "lint": "eslint . --ext .ts",
+    "test": "echo \"Proxy service - hardware dependent tests\""
+  },
+  "dependencies": {
+    "@ledgerhq/hw-app-eth": "^6.38.6",
+    "@ledgerhq/hw-transport-node-hid": "^6.29.8",
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "zod": "^3.23.8",
+    "viem": "^2.21.45",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/node": "^20.11.17",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
