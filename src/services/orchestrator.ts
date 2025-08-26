@@ -6,13 +6,10 @@ import { LedgerService } from './ledger.js';
 import { BlockscoutClient } from './blockscout.js';
 import { BlockchainService } from './blockchain.js';
 import { TransactionCrafter } from './transaction-crafter.js';
-import { SolanaBlockchainService } from './solana-blockchain.js';
-import { SolanaTransactionCrafter } from './solana-transaction-crafter.js';
-import type { SupportedNetwork, SolanaBlockchainServiceConfig } from '../types/blockchain.js';
+import type { SupportedNetwork } from '../types/blockchain.js';
 import type { BlockchainServiceConfig } from '../types/blockchain.js';
 import type { BlockscoutClientConfig } from './blockscout.types.js';
 import type { TransactionCrafterConfig } from '../types/transaction-crafter.js';
-import type { SolanaTransactionCrafterConfig } from './solana-transaction-crafter.js';
 
 /**
  * Configuration for the service orchestrator
@@ -22,11 +19,6 @@ export interface OrchestratorConfig {
   blockscout?: BlockscoutClientConfig;
   transactionCrafter?: TransactionCrafterConfig;
   defaultNetwork?: SupportedNetwork;
-  // Solana-specific configurations
-  solana?: {
-    blockchain?: SolanaBlockchainServiceConfig;
-    transactionCrafter?: SolanaTransactionCrafterConfig;
-  };
 }
 
 /**
@@ -37,9 +29,6 @@ export class ServiceOrchestrator {
   private blockscoutClient: BlockscoutClient;
   private blockchainService: BlockchainService;
   private transactionCrafter: TransactionCrafter;
-  // Solana services
-  private solanaBlockchainService: SolanaBlockchainService;
-  private solanaTransactionCrafter: SolanaTransactionCrafter;
   private config: Required<OrchestratorConfig>;
 
   constructor(config: OrchestratorConfig = {}) {
@@ -49,10 +38,6 @@ export class ServiceOrchestrator {
       blockscout: config.blockscout || { defaultNetwork: 'mainnet' },
       transactionCrafter: config.transactionCrafter || { defaultNetwork: 'mainnet' },
       defaultNetwork: config.defaultNetwork || 'mainnet',
-      solana: config.solana || {
-        blockchain: { defaultNetwork: 'solana-mainnet' },
-        transactionCrafter: { defaultNetwork: 'solana-mainnet' },
-      },
     };
 
     // Initialize Ethereum services
@@ -68,16 +53,6 @@ export class ServiceOrchestrator {
       config: this.config.transactionCrafter,
     });
 
-    // Initialize Solana services
-    this.solanaBlockchainService = new SolanaBlockchainService(
-      this.config.solana.blockchain
-    );
-    
-    this.solanaTransactionCrafter = new SolanaTransactionCrafter(
-      this.solanaBlockchainService,
-      this.ledgerService,
-      this.config.solana.transactionCrafter
-    );
   }
 
   /**
@@ -108,19 +83,6 @@ export class ServiceOrchestrator {
     return this.transactionCrafter;
   }
 
-  /**
-   * Get the Solana blockchain service
-   */
-  public getSolanaBlockchainService(): SolanaBlockchainService {
-    return this.solanaBlockchainService;
-  }
-
-  /**
-   * Get the Solana transaction crafter
-   */
-  public getSolanaTransactionCrafter(): SolanaTransactionCrafter {
-    return this.solanaTransactionCrafter;
-  }
 
   /**
    * Initialize all services (e.g., connect to Ledger)
@@ -143,19 +105,16 @@ export class ServiceOrchestrator {
     ledger: boolean;
     blockscout: boolean;
     blockchain: boolean;
-    solana: boolean;
     overall: boolean;
   }> {
     const checks = {
       ledger: this.ledgerService.isConnected(),
       blockscout: true, // Blockscout client doesn't have a health check, assume healthy
       blockchain: true, // Blockchain service doesn't have a health check, assume healthy
-      solana: await this.solanaBlockchainService.healthCheck(),
       overall: false,
     };
 
     // Overall health is true if ledger is connected (critical service)
-    // Solana is optional, so it doesn't affect overall health
     checks.overall = checks.ledger;
 
     return checks;
@@ -171,12 +130,10 @@ export class ServiceOrchestrator {
       
       // Close blockchain service clients
       await this.blockchainService.close();
-      await this.solanaBlockchainService.close();
       
       // Clear caches
       this.blockscoutClient.clearCache();
       this.blockchainService.clearCache();
-      this.solanaBlockchainService.clearCache();
       
       console.log('All services shut down successfully');
     } catch (error) {

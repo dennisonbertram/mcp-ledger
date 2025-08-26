@@ -23,29 +23,18 @@ import {
   SendErc721TokenSchema,
   ManageTokenApprovalSchema,
   GasAnalysisSchema,
-  // Solana Schemas
-  GetSolanaAddressSchema,
-  GetSolanaBalanceSchema,
-  GetSplTokenBalancesSchema,
-  CraftSolanaTransactionSchema,
-  SignSolanaTransactionSchema,
-  SendSolSchema,
-  SendSplTokenSchema,
-  AnalyzeSolanaFeesSchema,
 } from './types/index.js';
 import { ServiceOrchestrator } from './services/orchestrator.js';
 import { ToolHandlers } from './handlers/tools.js';
-import { SolanaToolHandlers } from './handlers/solana-tools.js';
 
 // Server configuration
 const SERVER_NAME = 'mcp-ledger-server';
 const SERVER_VERSION = '1.0.0';
-const SERVER_DESCRIPTION = 'MCP server for Ledger hardware wallet integration with Ethereum and Solana blockchains';
+const SERVER_DESCRIPTION = 'MCP server for Ledger hardware wallet integration with Ethereum blockchain';
 
 // Global orchestrator instance
 let orchestrator: ServiceOrchestrator;
 let toolHandlers: ToolHandlers;
-let solanaToolHandlers: SolanaToolHandlers;
 
 /**
  * Initialize services and orchestrator
@@ -77,32 +66,11 @@ async function initializeServices(): Promise<void> {
       securityChecks: true,
       ledgerDerivationPath: "44'/60'/0'/0/0",
     },
-    // Solana configuration
-    solana: {
-      blockchain: {
-        defaultNetwork: 'solana-mainnet',
-        cacheEnabled: true,
-        cacheTTL: 300,
-        requestTimeout: 30000,
-        maxRetries: 3,
-      },
-      transactionCrafter: {
-        defaultNetwork: 'solana-mainnet',
-        validateBeforeSigning: true,
-        securityChecks: true,
-      },
-    },
   });
 
   // Create tool handlers
   toolHandlers = new ToolHandlers(orchestrator);
   
-  // Create Solana tool handlers
-  solanaToolHandlers = new SolanaToolHandlers(
-    orchestrator.getLedgerService(),
-    orchestrator.getSolanaBlockchainService(),
-    orchestrator.getSolanaTransactionCrafter()
-  );
 
   // Initialize services (this will attempt to connect to Ledger)
   try {
@@ -653,293 +621,6 @@ async function startServer() {
     }
   );
 
-  // ============ SOLANA TOOLS ============
-
-  // Register tool: get_solana_address
-  server.tool(
-    'get_solana_address',
-    'Get the Solana address from the connected Ledger device',
-    {
-      derivationPath: GetSolanaAddressSchema.shape.derivationPath,
-      display: GetSolanaAddressSchema.shape.display,
-      network: GetSolanaAddressSchema.shape.network,
-    },
-    async (params) => {
-      try {
-        const result = await solanaToolHandlers.getSolanaAddress(params as any);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // Register tool: get_solana_balance
-  server.tool(
-    'get_solana_balance',
-    'Get the SOL balance for a given Solana address on the specified network',
-    {
-      address: GetSolanaBalanceSchema.shape.address,
-      network: GetSolanaBalanceSchema.shape.network,
-    },
-    async (params) => {
-      try {
-        const result = await solanaToolHandlers.getSolanaBalance(params as any);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // Register tool: get_spl_token_balances
-  server.tool(
-    'get_spl_token_balances',
-    'Get SPL token balances for a given Solana address on the specified network',
-    {
-      address: GetSplTokenBalancesSchema.shape.address,
-      mintAddresses: GetSplTokenBalancesSchema.shape.mintAddresses,
-      network: GetSplTokenBalancesSchema.shape.network,
-    },
-    async (params) => {
-      try {
-        const result = await solanaToolHandlers.getSplTokenBalances(params as any);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // Register tool: craft_solana_transaction
-  server.tool(
-    'craft_solana_transaction',
-    'Craft various types of Solana transactions for Ledger signing (SOL transfer, SPL token transfer, complex instructions)',
-    {
-      type: CraftSolanaTransactionSchema.shape.type,
-      network: CraftSolanaTransactionSchema.shape.network,
-      fromAddress: CraftSolanaTransactionSchema.shape.fromAddress,
-      toAddress: CraftSolanaTransactionSchema.shape.toAddress,
-      amount: CraftSolanaTransactionSchema.shape.amount,
-      mintAddress: CraftSolanaTransactionSchema.shape.mintAddress,
-      decimals: CraftSolanaTransactionSchema.shape.decimals,
-      spenderAddress: CraftSolanaTransactionSchema.shape.spenderAddress,
-      instructions: CraftSolanaTransactionSchema.shape.instructions,
-      priorityFee: CraftSolanaTransactionSchema.shape.priorityFee,
-      computeUnits: CraftSolanaTransactionSchema.shape.computeUnits,
-      memo: CraftSolanaTransactionSchema.shape.memo,
-      createRecipientAccount: CraftSolanaTransactionSchema.shape.createRecipientAccount,
-    },
-    async (params) => {
-      try {
-        const result = await solanaToolHandlers.craftSolanaTransaction(params as any);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // Register tool: sign_solana_transaction
-  server.tool(
-    'sign_solana_transaction',
-    'Sign a prepared Solana transaction using the connected Ledger device',
-    {
-      transactionData: SignSolanaTransactionSchema.shape.transactionData,
-      derivationPath: SignSolanaTransactionSchema.shape.derivationPath,
-      network: SignSolanaTransactionSchema.shape.network,
-    },
-    async (params) => {
-      try {
-        const result = await solanaToolHandlers.signSolanaTransaction(params as any);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // Register tool: send_sol
-  server.tool(
-    'send_sol',
-    'Send SOL to an address - convenience method that crafts, signs, and broadcasts the transaction',
-    {
-      toAddress: SendSolSchema.shape.toAddress,
-      amount: SendSolSchema.shape.amount,
-      network: SendSolSchema.shape.network,
-      derivationPath: SendSolSchema.shape.derivationPath,
-      priorityFee: SendSolSchema.shape.priorityFee,
-      memo: SendSolSchema.shape.memo,
-    },
-    async (params) => {
-      try {
-        const result = await solanaToolHandlers.sendSol(params as any);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // Register tool: send_spl_token
-  server.tool(
-    'send_spl_token',
-    'Send SPL tokens to an address - convenience method that crafts, signs, and broadcasts the transaction',
-    {
-      toAddress: SendSplTokenSchema.shape.toAddress,
-      mintAddress: SendSplTokenSchema.shape.mintAddress,
-      amount: SendSplTokenSchema.shape.amount,
-      network: SendSplTokenSchema.shape.network,
-      derivationPath: SendSplTokenSchema.shape.derivationPath,
-      createRecipientAccount: SendSplTokenSchema.shape.createRecipientAccount,
-      memo: SendSplTokenSchema.shape.memo,
-    },
-    async (params) => {
-      try {
-        const result = await solanaToolHandlers.sendSplToken(params as any);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // Register tool: analyze_solana_fees
-  server.tool(
-    'analyze_solana_fees',
-    'Analyze current Solana fees, network conditions, and get transaction cost estimates with recommendations',
-    {
-      network: AnalyzeSolanaFeesSchema.shape.network,
-    },
-    async (params) => {
-      try {
-        const result = await solanaToolHandlers.analyzeSolanaFees(params as any);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
 
   // Register a resource for server information
   server.resource(
@@ -980,15 +661,6 @@ async function startServer() {
                     'send_erc721_token',
                     'manage_token_approval',
                     'analyze_gas',
-                    // Solana Tools
-                    'get_solana_address',
-                    'get_solana_balance',
-                    'get_spl_token_balances',
-                    'craft_solana_transaction',
-                    'sign_solana_transaction',
-                    'send_sol',
-                    'send_spl_token',
-                    'analyze_solana_fees',
                   ],
                   resources: ['server-info'],
                   prompts: ['transaction-review'],
@@ -1001,10 +673,6 @@ async function startServer() {
                   'arbitrum',
                   'optimism',
                   'base',
-                  // Solana Networks
-                  'solana-mainnet',
-                  'solana-devnet',
-                  'solana-testnet',
                 ],
               },
               null,
@@ -1120,8 +788,7 @@ Please explain what this transaction will do, any potential risks, and whether i
     await server.connect(transport);
     console.error(`${SERVER_NAME} is running and ready to receive requests via stdio`);
     console.error('Available Ethereum tools: get_ledger_address, get_balance, get_token_balances, get_nft_balances, craft_transaction, get_contract_abi, sign_transaction, sign_message, broadcast_transaction, send_eth, send_erc20_token, send_erc721_token, manage_token_approval, analyze_gas');
-    console.error('Available Solana tools: get_solana_address, get_solana_balance, get_spl_token_balances, craft_solana_transaction, sign_solana_transaction, send_sol, send_spl_token, analyze_solana_fees');
-    console.error('Supported networks: mainnet, sepolia, polygon, arbitrum, optimism, base, solana-mainnet, solana-devnet, solana-testnet');
+    console.error('Supported networks: mainnet, sepolia, polygon, arbitrum, optimism, base');
   } catch (error) {
     console.error('Failed to start server:', error);
     if (orchestrator) {
