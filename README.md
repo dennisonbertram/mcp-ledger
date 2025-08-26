@@ -325,4 +325,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 🔒 **Keep Your Crypto Safe**: This tool enhances security by keeping your private keys on hardware while enabling powerful AI interactions with your crypto assets.
 
-Built with ❤️ by [Dennison Bertram](https://github.com/crazyrabbitltc)
+Built with ❤️ by [Dennison Bertram](https://github.com/dennisonbertram)
