@@ -1,7 +1,7 @@
 {
   "name": "mcp-ledger",
   "version": "1.0.0",
-  "description": "Model Context Protocol server for Ledger hardware wallet integration with Ethereum",
+  "description": "Model Context Protocol server for Ledger hardware wallet integration with Ethereum and Solana blockchains",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -9,12 +9,17 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "keywords": [
     "mcp",
     "ledger",
     "ethereum",
+    "solana",
+    "spl-token",
     "blockchain",
     "typescript",
     "hardware-wallet",
@@ -37,11 +42,15 @@
   "license": "MIT",
   "dependencies": {
     "@ledgerhq/hw-app-eth": "^6.38.6",
+    "@ledgerhq/hw-app-solana": "^7.0.20",
     "@ledgerhq/hw-transport": "^6.31.4",
     "@ledgerhq/hw-transport-node-hid": "^6.29.8",
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@solana/spl-token": "^0.4.8",
+    "@solana/web3.js": "^1.95.4",
     "async-mutex": "^0.5.0",
     "axios": "^1.7.9",
+    "bs58": "^6.0.0",
     "dotenv": "^16.6.1",
     "node-cache": "^5.1.2",
     "viem": "^2.21.45",
@@ -49,10 +58,14 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/bs58": "^4.0.4",
+    "@types/jest": "^30.0.0",
     "@types/ledgerhq__hw-transport": "^4.21.8",
     "@types/ledgerhq__hw-transport-node-hid": "^4.22.5",
     "@types/node": "^22.10.2",
     "@types/ws": "^8.5.13",
+    "jest": "^30.0.5",
+    "ts-jest": "^29.4.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },

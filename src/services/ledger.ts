@@ -8,10 +8,13 @@ import TransportNodeHidModule from '@ledgerhq/hw-transport-node-hid';
 import type Transport from '@ledgerhq/hw-transport';
 import EthModule from '@ledgerhq/hw-app-eth';
 import type { LedgerEthTransactionResolution } from '@ledgerhq/hw-app-eth/lib/services/types';
+import SolanaModule from '@ledgerhq/hw-app-solana';
 
 const TransportNodeHid = (TransportNodeHidModule as any).default;
 const Eth = (EthModule as any).default;
+const Solana = (SolanaModule as any).default;
 import { Mutex } from 'async-mutex';
+import type { SolanaAddress } from '../types/blockchain.js';
 
 /**
  * Error messages for better debugging
@@ -19,13 +22,17 @@ import { Mutex } from 'async-mutex';
 const ErrorMessages = {
   DEVICE_NOT_CONNECTED: 'Ledger device not connected',
   NOT_CONNECTED: 'Ledger not connected',
-  WRONG_APP: 'Wrong app opened on Ledger. Please open Ethereum app',
+  WRONG_APP: 'Wrong app opened on Ledger',
+  WRONG_ETH_APP: 'Wrong app opened on Ledger. Please open Ethereum app',
+  WRONG_SOLANA_APP: 'Wrong app opened on Ledger. Please open Solana app',
   USER_REJECTED_REQUEST: 'User rejected the request',
   USER_REJECTED_TRANSACTION: 'User rejected the transaction',
   DEVICE_DISCONNECTED: 'Ledger device disconnected',
   DEVICE_LOCKED: 'Ledger device is locked',
   CONNECTION_TIMEOUT: 'Connection timeout',
   INVALID_TRANSACTION: 'Invalid transaction format',
+  INVALID_DERIVATION_PATH: 'Invalid derivation path',
+  SOLANA_APP_NOT_CONNECTED: 'Solana app not connected',
 } as const;
 
 /**
@@ -58,13 +65,37 @@ export interface AppConfiguration {
 }
 
 /**
+ * Interface for Solana transaction signature
+ */
+export interface SolanaTransactionSignature {
+  signature: Buffer;
+}
+
+/**
+ * Interface for Solana message signature  
+ */
+export interface SolanaMessageSignature {
+  signature: Buffer;
+}
+
+/**
+ * Interface for Solana app configuration
+ */
+export interface SolanaAppConfiguration {
+  version: string;
+  blindSigningEnabled: boolean;
+}
+
+/**
  * LedgerService class for managing Ledger hardware wallet interactions
  * FIXED: Added mutex for thread-safe operations and connection state management
  */
 export class LedgerService {
   private transport: Transport | null = null;
   private ethApp: any | null = null;
+  private solanaApp: any | null = null;
   private connected: boolean = false;
+  private currentApp: 'ethereum' | 'solana' | null = null;
   
   // Mutex for synchronizing connection operations
   private connectionMutex: Mutex = new Mutex();
@@ -148,6 +179,7 @@ export class LedgerService {
 
       this.transport = await Promise.race([connectionPromise, timeoutPromise]);
       this.ethApp = new Eth(this.transport);
+      this.solanaApp = new Solana(this.transport);
       this.connected = true;
       this.connectionState = 'connected';
       
@@ -157,6 +189,8 @@ export class LedgerService {
       this.connectionState = 'disconnected';
       this.transport = null;
       this.ethApp = null;
+      this.solanaApp = null;
+      this.currentApp = null;
 
       // Handle specific error cases
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -354,5 +388,276 @@ export class LedgerService {
 
     // Default error
     throw error;
+  }
+
+  // ============ Solana Methods ============
+
+  /**
+   * Get Solana address from Ledger with proper synchronization
+   * @param path - BIP32 derivation path (e.g., "44'/501'/0'/0'")
+   * @param display - Whether to display address on device
+   * @returns Promise<SolanaAddress>
+   */
+  public async getSolanaAddress(
+    path: string,
+    display: boolean = false
+  ): Promise<SolanaAddress> {
+    return this.operationMutex.runExclusive(async () => {
+      if (!this.connected || !this.solanaApp || this.connectionState !== 'connected') {
+        throw new Error(ErrorMessages.SOLANA_APP_NOT_CONNECTED);
+      }
+
+      try {
+        // Validate derivation path
+        this.validateSolanaDerivationPath(path);
+        
+        const result = await this.solanaApp.getAddress(path, display);
+        this.currentApp = 'solana';
+        
+        return {
+          address: result.address,
+          derivationPath: path,
+          publicKey: result.publicKey,
+        };
+      } catch (error: unknown) {
+        return this.handleSolanaError(error, 'getSolanaAddress');
+      }
+    });
+  }
+
+  /**
+   * Sign Solana transaction with proper synchronization
+   * @param path - BIP32 derivation path
+   * @param transactionBuffer - Serialized transaction buffer
+   * @returns Promise<SolanaTransactionSignature>
+   */
+  public async signSolanaTransaction(
+    path: string,
+    transactionBuffer: Buffer
+  ): Promise<SolanaTransactionSignature> {
+    return this.operationMutex.runExclusive(async () => {
+      if (!this.connected || !this.solanaApp || this.connectionState !== 'connected') {
+        throw new Error(ErrorMessages.SOLANA_APP_NOT_CONNECTED);
+      }
+
+      try {
+        // Validate derivation path
+        this.validateSolanaDerivationPath(path);
+        
+        // Validate transaction size (Ledger limit: 1232 bytes)
+        if (transactionBuffer.length > 1232) {
+          throw new Error('Transaction too large for Ledger signing (max 1232 bytes)');
+        }
+        
+        const result = await this.solanaApp.signTransaction(path, transactionBuffer);
+        this.currentApp = 'solana';
+        
+        return {
+          signature: result.signature,
+        };
+      } catch (error: unknown) {
+        return this.handleSolanaError(error, 'signSolanaTransaction');
+      }
+    });
+  }
+
+  /**
+   * Sign Solana off-chain message with proper synchronization
+   * @param path - BIP32 derivation path
+   * @param messageBuffer - Message buffer to sign
+   * @returns Promise<SolanaMessageSignature>
+   */
+  public async signSolanaMessage(
+    path: string,
+    messageBuffer: Buffer
+  ): Promise<SolanaMessageSignature> {
+    return this.operationMutex.runExclusive(async () => {
+      if (!this.connected || !this.solanaApp || this.connectionState !== 'connected') {
+        throw new Error(ErrorMessages.SOLANA_APP_NOT_CONNECTED);
+      }
+
+      try {
+        // Validate derivation path
+        this.validateSolanaDerivationPath(path);
+        
+        const result = await this.solanaApp.signOffchainMessage(path, messageBuffer);
+        this.currentApp = 'solana';
+        
+        return {
+          signature: result.signature,
+        };
+      } catch (error: unknown) {
+        return this.handleSolanaError(error, 'signSolanaMessage');
+      }
+    });
+  }
+
+  /**
+   * Get Solana app configuration with proper synchronization
+   * @returns Promise<SolanaAppConfiguration>
+   */
+  public async getSolanaAppConfiguration(): Promise<SolanaAppConfiguration> {
+    return this.operationMutex.runExclusive(async () => {
+      if (!this.connected || !this.solanaApp || this.connectionState !== 'connected') {
+        throw new Error(ErrorMessages.SOLANA_APP_NOT_CONNECTED);
+      }
+
+      try {
+        const result = await this.solanaApp.getAppConfiguration();
+        this.currentApp = 'solana';
+        
+        return {
+          version: result.version,
+          blindSigningEnabled: result.blindSigningEnabled || false,
+        };
+      } catch (error: unknown) {
+        return this.handleSolanaError(error, 'getSolanaAppConfiguration');
+      }
+    });
+  }
+
+  /**
+   * Validate Solana derivation path
+   * @param path - Derivation path to validate
+   */
+  private validateSolanaDerivationPath(path: string): void {
+    // Solana uses BIP44 with coin type 501
+    // Standard format: m/44'/501'/account'/change'
+    const pathRegex = /^44'\/501'\/\d+'\/\d+'?$/;
+    
+    if (!pathRegex.test(path)) {
+      throw new Error(ErrorMessages.INVALID_DERIVATION_PATH);
+    }
+  }
+
+  /**
+   * Handle Solana-specific errors
+   * @param error - The error object
+   * @param operation - The operation that failed
+   */
+  private handleSolanaError(error: unknown, operation: string): never {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // User rejection errors
+    if (errorMessage.includes('0x6985') || errorMessage.includes('denied by the user')) {
+      if (operation === 'signSolanaTransaction') {
+        throw new Error(ErrorMessages.USER_REJECTED_TRANSACTION);
+      }
+      if (operation === 'signSolanaMessage') {
+        throw new Error(ErrorMessages.USER_REJECTED_REQUEST);
+      }
+      throw new Error(ErrorMessages.USER_REJECTED_REQUEST);
+    }
+
+    // Wrong app opened (Solana app not open)
+    if (errorMessage.includes('0x6e00') || errorMessage.includes('UNKNOWN_ERROR')) {
+      throw new Error(ErrorMessages.WRONG_SOLANA_APP);
+    }
+
+    // Device disconnected
+    if (errorMessage.includes('Device is not connected') || errorMessage.includes('Device disconnected')) {
+      throw new Error(ErrorMessages.DEVICE_DISCONNECTED);
+    }
+
+    // Device locked
+    if (errorMessage.includes('Device is locked')) {
+      throw new Error(ErrorMessages.DEVICE_LOCKED);
+    }
+
+    // Invalid transaction data
+    if (errorMessage.includes('0x6a80') || errorMessage.includes('Invalid data')) {
+      throw new Error('Invalid Solana transaction format');
+    }
+
+    // Transaction too large
+    if (errorMessage.includes('too large') || errorMessage.includes('size')) {
+      throw new Error('Transaction too large for Ledger device');
+    }
+
+    // Blind signing required
+    if (errorMessage.includes('blind') || errorMessage.includes('signing')) {
+      throw new Error('Complex transaction requires blind signing to be enabled in Solana app');
+    }
+
+    // Default error
+    throw error;
+  }
+
+  /**
+   * Test Solana app connectivity
+   * @returns Promise<boolean> - True if Solana app is accessible
+   */
+  public async testSolanaApp(): Promise<boolean> {
+    if (!this.connected || !this.solanaApp) {
+      return false;
+    }
+
+    try {
+      // Try to get app configuration as a connectivity test
+      await this.solanaApp.getAppConfiguration();
+      this.currentApp = 'solana';
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Test Ethereum app connectivity  
+   * @returns Promise<boolean> - True if Ethereum app is accessible
+   */
+  public async testEthereumApp(): Promise<boolean> {
+    if (!this.connected || !this.ethApp) {
+      return false;
+    }
+
+    try {
+      // Try to get app configuration as a connectivity test
+      await this.ethApp.getAppConfiguration();
+      this.currentApp = 'ethereum';
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get currently active app
+   * @returns 'ethereum' | 'solana' | null
+   */
+  public getCurrentApp(): 'ethereum' | 'solana' | null {
+    return this.currentApp;
+  }
+
+  /**
+   * Update disconnect method to clean up Solana app
+   */
+  public async disconnect(): Promise<void> {
+    return this.connectionMutex.runExclusive(async () => {
+      // Mark as disconnecting to prevent new operations
+      this.connectionState = 'disconnected';
+      
+      if (!this.connected || !this.transport) {
+        this.connected = false;
+        this.transport = null;
+        this.ethApp = null;
+        this.solanaApp = null;
+        this.currentApp = null;
+        return;
+      }
+
+      try {
+        await this.transport.close();
+      } catch {
+        // Gracefully handle disconnect errors - silently fail as device may already be disconnected
+        // In production, this could be logged to a proper logging service
+      } finally {
+        this.transport = null;
+        this.ethApp = null;
+        this.solanaApp = null;
+        this.currentApp = null;
+        this.connected = false;
+      }
+    });
   }
 }
